@@ -1,8 +1,8 @@
 """
-Strict JSON Schemas for Triage, Topology, Statements (V3 & V4), MCA, and Freeform Summaries.
+Strict JSON Schemas for Triage, Topology, Statements (Summary & Batched), MCA, and Freeform Summaries.
+All numeric summary fields are nullable to prevent API schema rejections on atypical statement formats.
 """
 
-# Stage 1: Classification & Application Form Schema
 CLASSIFICATION_SCHEMA = {
     "type": "object",
     "properties": {
@@ -73,7 +73,6 @@ CLASSIFICATION_SCHEMA = {
     "additionalProperties": False,
 }
 
-# Freeform Entity Extraction (for Licenses, Voided Checks, Tax Forms, etc.)
 FREEFORM_ENTITY_SCHEMA = {
     "type": "object",
     "properties": {
@@ -95,7 +94,6 @@ FREEFORM_ENTITY_SCHEMA = {
     "additionalProperties": False,
 }
 
-# Stage 2: Statement Topology Schema
 TOPOLOGY_SCHEMA = {
     "type": "object",
     "properties": {
@@ -114,8 +112,7 @@ TOPOLOGY_SCHEMA = {
     "additionalProperties": False,
 }
 
-# Stage 3A: V3 Single-Account Document Schema
-V3_SINGLE_DOCUMENT_SCHEMA = {
+SUMMARY_SCHEMA = {
     "type": "object",
     "properties": {
         "bankName": {"type": "string"},
@@ -127,15 +124,29 @@ V3_SINGLE_DOCUMENT_SCHEMA = {
         "accountNumber": {"type": "string"},
         "startdate": {"type": "string", "pattern": r"^\d{4}-\d{2}-\d{2}$"},
         "enddate": {"type": "string", "pattern": r"^\d{4}-\d{2}-\d{2}$"},
-        "beginningBalance": {"type": "number"},
-        "endingBalance": {"type": "number"},
+        "beginningBalance": {"type": ["number", "null"]},
+        "endingBalance": {"type": ["number", "null"]},
         "avgDailyBalance": {"type": ["number", "null"]},
         "avgLedgerBalance": {"type": ["number", "null"]},
-        "totalDeposits": {"type": "number"},
-        "totalWithdrawals": {"type": "number"},
+        "totalDeposits": {"type": ["number", "null"]},
+        "totalWithdrawals": {"type": ["number", "null"]},
         "numberOfCreditTransactions": {"type": ["integer", "null"]},
         "numberOfDebitsTransactions": {"type": ["integer", "null"]},
         "serviceCharges": {"type": ["number", "null"]},
+    },
+    "required": [
+        "bankName", "accountHolder", "accountHolderAddress", "accountHolderCity",
+        "accountHolderState", "accountHolderZip", "accountNumber", "startdate", "enddate",
+        "beginningBalance", "endingBalance", "avgDailyBalance", "avgLedgerBalance",
+        "totalDeposits", "totalWithdrawals", "numberOfCreditTransactions",
+        "numberOfDebitsTransactions", "serviceCharges",
+    ],
+    "additionalProperties": False,
+}
+
+BATCH_TRANSACTIONS_SCHEMA = {
+    "type": "object",
+    "properties": {
         "transactions": {
             "type": "array",
             "items": {
@@ -144,25 +155,18 @@ V3_SINGLE_DOCUMENT_SCHEMA = {
                     "postingDate": {"type": "string", "pattern": r"^\d{4}-\d{2}-\d{2}$"},
                     "description": {"type": "string", "minLength": 1},
                     "amount": {"type": "number"},
-                    "type": {"type": "string", "enum": ["credit", "debit"]},
+                    "type": {"type": "string", "enum": ["credit", "debit", "returned_item"]},
                     "balance": {"type": ["number", "null"]},
                 },
                 "required": ["postingDate", "description", "amount", "type", "balance"],
                 "additionalProperties": False,
             },
-        },
+        }
     },
-    "required": [
-        "bankName", "accountHolder", "accountHolderAddress", "accountHolderCity",
-        "accountHolderState", "accountHolderZip", "accountNumber", "startdate", "enddate",
-        "beginningBalance", "endingBalance", "avgDailyBalance", "avgLedgerBalance",
-        "totalDeposits", "totalWithdrawals", "numberOfDebitsTransactions",
-        "numberOfCreditTransactions", "serviceCharges", "transactions",
-    ],
+    "required": ["transactions"],
     "additionalProperties": False,
 }
 
-# Stage 3B: V4 Multi-Account Schemas
 V4_METADATA_SCHEMA = {
     "type": "object",
     "properties": {
@@ -196,10 +200,10 @@ V4_BATCH_SCHEMA = {
                 "properties": {
                     "accountNumber": {"type": "string"},
                     "accountName": {"type": "string"},
-                    "beginningBalance": {"type": "number"},
-                    "endingBalance": {"type": "number"},
-                    "totalDeposits": {"type": "number"},
-                    "totalWithdrawals": {"type": "number"},
+                    "beginningBalance": {"type": ["number", "null"]},
+                    "endingBalance": {"type": ["number", "null"]},
+                    "totalDeposits": {"type": ["number", "null"]},
+                    "totalWithdrawals": {"type": ["number", "null"]},
                     "serviceCharges": {"type": ["number", "null"]},
                     "numberOfCreditTransactions": {"type": ["integer", "null"]},
                     "numberOfDebitsTransactions": {"type": ["integer", "null"]},
@@ -234,7 +238,6 @@ V4_BATCH_SCHEMA = {
     "additionalProperties": False,
 }
 
-# Stage 4: Financial Position & MCA Schema (mca_others_v3)
 MCA_ANALYSIS_SCHEMA = {
     "type": "object",
     "properties": {

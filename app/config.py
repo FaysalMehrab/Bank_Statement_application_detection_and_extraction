@@ -3,18 +3,6 @@ Provider Registry, Model Configurations & Token Pricing
 """
 
 SUPPORTED_PROVIDERS = {
-    "openrouter": {
-        "label": "OpenRouter (Free & Paid)",
-        "default_model": "nvidia/nemotron-3-ultra-550b-a55b:free",
-        "base_url": "https://openrouter.ai/api/v1",
-        "models": [
-            {"id": "nvidia/nemotron-3-ultra-550b-a55b:free", "label": "NVIDIA Nemotron 3 Ultra (Free 1M Context)", "vision": False, "in_price": 0.0, "cached_price": 0.0, "out_price": 0.0},
-            {"id": "openrouter/free", "label": "OpenRouter Free Router (Auto-Select Active Free Model)", "vision": True, "in_price": 0.0, "cached_price": 0.0, "out_price": 0.0},
-            {"id": "meta-llama/llama-3.3-70b-instruct:free", "label": "Meta Llama 3.3 70B Instruct (Free)", "vision": False, "in_price": 0.0, "cached_price": 0.0, "out_price": 0.0},
-            {"id": "deepseek/deepseek-r1:free", "label": "DeepSeek R1 (Free Reasoning)", "vision": False, "in_price": 0.0, "cached_price": 0.0, "out_price": 0.0},
-            {"id": "deepseek/deepseek-chat:free", "label": "DeepSeek V3 (Free Chat)", "vision": False, "in_price": 0.0, "cached_price": 0.0, "out_price": 0.0},
-        ],
-    },
     "openai": {
         "label": "OpenAI",
         "default_model": "gpt-4o",
@@ -32,8 +20,20 @@ SUPPORTED_PROVIDERS = {
         "base_url": "https://api.anthropic.com/v1",
         "models": [
             {"id": "claude-3-7-sonnet-20250219", "label": "Claude 3.7 Sonnet (Hybrid Reasoning)", "vision": True, "in_price": 3.00, "cached_price": 0.30, "out_price": 15.00},
-            {"id": "claude-3-5-sonnet-20241022", "label": "Claude 3.5 Sonnet v2 (Recommended)", "vision": True, "in_price": 3.00, "cached_price": 0.30, "out_price": 15.00},
-            {"id": "claude-3-5-haiku-20241022", "label": "Claude 3.5 Haiku (Fast)", "vision": False, "in_price": 0.80, "cached_price": 0.08, "out_price": 4.00},
+            {"id": "claude-3-5-sonnet-20241022", "label": "Claude 3.5 Sonnet v2", "vision": True, "in_price": 3.00, "cached_price": 0.30, "out_price": 15.00},
+            {"id": "claude-3-5-haiku-20241022", "label": "Claude 3.5 Haiku", "vision": False, "in_price": 0.80, "cached_price": 0.08, "out_price": 4.00},
+        ],
+    },
+    "openrouter": {
+        "label": "OpenRouter",
+        "default_model": "meta-llama/llama-3.3-70b-instruct:free",
+        "base_url": "https://openrouter.ai/api/v1",
+        "models": [
+            {"id": "meta-llama/llama-3.3-70b-instruct:free", "label": "Meta Llama 3.3 70B (Free)", "vision": False, "in_price": 0.0, "cached_price": 0.0, "out_price": 0.0},
+            {"id": "nvidia/nemotron-3.5-super-vl:free", "label": "NVIDIA Nemotron 3.5 Super VL (Free 1M Vision)", "vision": True, "in_price": 0.0, "cached_price": 0.0, "out_price": 0.0},
+            {"id": "nvidia/nemotron-3-ultra-550b-a55b:free", "label": "NVIDIA Nemotron 3 Ultra (Free 1M Text)", "vision": False, "in_price": 0.0, "cached_price": 0.0, "out_price": 0.0},
+            {"id": "qwen/qwen-2.5-vl-72b-instruct:free", "label": "Qwen 2.5 VL 72B (Free Vision)", "vision": True, "in_price": 0.0, "cached_price": 0.0, "out_price": 0.0},
+            {"id": "deepseek/deepseek-r1:free", "label": "DeepSeek R1 (Free Reasoning)", "vision": False, "in_price": 0.0, "cached_price": 0.0, "out_price": 0.0},
         ],
     },
     "deepseek": {
@@ -46,7 +46,7 @@ SUPPORTED_PROVIDERS = {
         ],
     },
     "custom": {
-        "label": "Custom (Self-Hosted / Other Proxy)",
+        "label": "Custom (Self-Hosted / Proxy)",
         "default_model": "custom-model",
         "base_url": "https://openrouter.ai/api/v1",
         "models": [],
