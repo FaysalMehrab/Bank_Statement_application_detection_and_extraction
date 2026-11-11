@@ -12,7 +12,10 @@ import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import pdfplumber
-from pdf2image import convert_from_path
+try:
+    import pymupdf as fitz  # Self-contained PDF rasterizer, no Poppler binary required
+except ImportError:  # pragma: no cover - retained only for a partial local install
+    fitz = None
 
 from app.config import IMAGE_DPI, IMAGE_DETAIL, RECONCILIATION_TOLERANCE
 from app.gateway import UniversalLLMGateway
@@ -45,6 +48,25 @@ def _pil_to_base64_data_uri(img):
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode('utf-8')}"
+
+
+def _render_first_pdf_page(file_path: str) -> str:
+    """Return page one as a PNG data URI without relying on a system Poppler install."""
+    if fitz is None:
+        raise RuntimeError(
+            "PDF image rendering requires PyMuPDF. Run `pip install -r requirements.txt` "
+            "in the project virtual environment, then restart the server."
+        )
+    try:
+        document = fitz.open(file_path)
+        if document.page_count < 1:
+            raise ValueError("The PDF has no pages.")
+        page = document.load_page(0)
+        # 150 DPI is appropriate for classification and keeps image payloads manageable.
+        pixmap = page.get_pixmap(matrix=fitz.Matrix(150 / 72, 150 / 72), alpha=False)
+        return f"data:image/png;base64,{base64.b64encode(pixmap.tobytes('png')).decode('utf-8')}"
+    except Exception as exc:
+        raise RuntimeError(f"Could not render the first PDF page: {exc}") from exc
 
 
 def _parse_num(val):
@@ -100,8 +122,7 @@ class PipelineOrchestrator:
             if len(text_p1) >= 40:
                 triage_content.append({"type": "input_text", "text": f"Page 1 Text:\n\n{text_p1}"})
             else:
-                imgs = convert_from_path(file_path, dpi=150, first_page=1, last_page=1)
-                triage_content.append({"type": "input_image", "image_url": _pil_to_base64_data_uri(imgs[0])})
+                triage_content.append({"type": "input_image", "image_url": _render_first_pdf_page(file_path)})
         else:
             with open(file_path, "rb") as f:
                 b64 = base64.b64encode(f.read()).decode("utf-8")

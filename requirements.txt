@@ -4,6 +4,7 @@ python-multipart
 pydantic
 pdfplumber
 pdf2image
+PyMuPDF
 pypdf
 openai
 httpx

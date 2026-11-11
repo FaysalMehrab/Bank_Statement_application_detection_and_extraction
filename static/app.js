@@ -11,13 +11,19 @@ if (window.pdfjsLib) {
 let providersRegistry = {};
 let documentsStore = [];
 let currentViewingDoc = null;
+let currentPdf = null;
+let pdfZoom = 1.15;
+let previewObjectUrl = null;
+const DB_NAME = "universal-underwriter";
+const DB_STORE = "source-files";
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 // Initialize on DOM load
 document.addEventListener("DOMContentLoaded", async () => {
   if (window.lucide) lucide.createIcons();
   await loadProviders();
   loadStoredSettings();
-  loadStoredDocuments();
+  await loadStoredDocuments();
   setupDropZone();
   renderDocumentTree();
 });
@@ -37,7 +43,7 @@ async function loadProviders() {
 
 function loadStoredSettings() {
   const provider = sessionStorage.getItem("underwriter_provider") || "openrouter";
-  const model = sessionStorage.getItem("underwriter_model") || "meta-llama/llama-3.3-70b-instruct:free";
+  const model = sessionStorage.getItem("underwriter_model") || "openrouter/auto";
   const key = sessionStorage.getItem("underwriter_key") || "";
   const baseUrl = sessionStorage.getItem("underwriter_base_url") || "https://openrouter.ai/api/v1";
 
@@ -74,6 +80,17 @@ function populateModelsDropdown() {
   otherOpt.textContent = "Other Model (Specify ID)...";
   sel.appendChild(otherOpt);
 
+  const storedProvider = sessionStorage.getItem("underwriter_provider");
+  const storedModel = sessionStorage.getItem("underwriter_model");
+  const preferredModel = storedProvider === prov && storedModel ? storedModel : cfg.default_model;
+  if ([...sel.options].some((option) => option.value === preferredModel)) {
+    sel.value = preferredModel;
+  } else if (preferredModel) {
+    sel.value = "other";
+    document.getElementById("settingModelCustom").value = preferredModel;
+  }
+  onModelSelectChanged();
+
   const urlInput = document.getElementById("settingBaseUrl");
   if (urlInput && cfg.base_url) {
     urlInput.value = cfg.base_url;
@@ -101,6 +118,10 @@ function saveSettings() {
   const selModel = document.getElementById("settingModelSelect").value;
   const customModel = document.getElementById("settingModelCustom").value.trim();
   const finalModel = selModel === "other" ? customModel : selModel;
+  if (!finalModel) {
+    alert("Choose a model or enter a model ID.");
+    return;
+  }
   const baseUrl = document.getElementById("settingBaseUrl").value.trim();
 
   sessionStorage.setItem("underwriter_provider", prov);
@@ -193,6 +214,11 @@ function setupDropZone() {
 
 function handleFiles(files) {
   Array.from(files).forEach((file) => {
+    const allowed = ["application/pdf", "image/png", "image/jpeg"];
+    if (!allowed.includes(file.type) || file.size > MAX_UPLOAD_BYTES) {
+      alert(`${file.name} was skipped. Upload a PDF, PNG, or JPG smaller than 25 MB.`);
+      return;
+    }
     const docId = "doc_" + Math.random().toString(36).substr(2, 9);
     const newDoc = {
       id: docId,
@@ -205,6 +231,7 @@ function handleFiles(files) {
       warningReason: null,
     };
     documentsStore.unshift(newDoc);
+    saveSourceFile(docId, file).catch((error) => console.warn("Could not retain source file:", error));
   });
   saveStoredDocuments();
   renderDocumentTree();
@@ -227,11 +254,14 @@ function saveStoredDocuments() {
   }
 }
 
-function loadStoredDocuments() {
+async function loadStoredDocuments() {
   try {
     const raw = localStorage.getItem("underwriter_docs");
     if (raw) {
       documentsStore = JSON.parse(raw);
+      await Promise.all(documentsStore.map(async (doc) => {
+        doc.fileObject = await getSourceFile(doc.id);
+      }));
     }
   } catch (e) {
     documentsStore = [];
@@ -242,8 +272,42 @@ function clearAllDocs() {
   if (confirm("Clear all documents from the library?")) {
     documentsStore = [];
     localStorage.removeItem("underwriter_docs");
+    clearSourceFiles().catch((error) => console.warn("Could not clear local source files:", error));
     renderDocumentTree();
   }
+}
+
+function openSourceDb() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, 1);
+    request.onupgradeneeded = () => request.result.createObjectStore(DB_STORE);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function sourceDbAction(mode, action) {
+  const db = await openSourceDb();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(DB_STORE, mode);
+    const request = action(transaction.objectStore(DB_STORE));
+    transaction.oncomplete = () => { db.close(); resolve(request?.result); };
+    transaction.onerror = () => { db.close(); reject(transaction.error); };
+  });
+}
+
+const saveSourceFile = (id, file) => sourceDbAction("readwrite", (store) => store.put(file, id));
+const getSourceFile = (id) => sourceDbAction("readonly", (store) => store.get(id));
+const deleteSourceFile = (id) => sourceDbAction("readwrite", (store) => store.delete(id));
+const clearSourceFiles = () => sourceDbAction("readwrite", (store) => store.clear());
+
+async function deleteDocument(docId) {
+  const doc = documentsStore.find((item) => item.id === docId);
+  if (!doc || !confirm(`Delete ${doc.name} and its locally stored source file?`)) return;
+  documentsStore = documentsStore.filter((item) => item.id !== docId);
+  await deleteSourceFile(docId).catch((error) => console.warn("Could not delete source file:", error));
+  saveStoredDocuments();
+  renderDocumentTree();
 }
 
 // ===========================================================================
@@ -367,13 +431,14 @@ function buildDocRowHTML(doc) {
       </div>
     </div>
 
-    <div class="flex items-center space-x-3">
+    <div class="flex items-center space-x-2">
       ${badgeHTML}
       ${
         isExtracted
           ? `<button onclick="viewExtractedData('${doc.id}')" class="px-3.5 py-1.5 text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold rounded-lg transition border border-indigo-200">View Data</button>`
           : `<button onclick="triggerExtraction('${doc.id}')" class="px-3.5 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-sm transition">Extract</button>`
       }
+      <button onclick="deleteDocument('${doc.id}')" class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition" title="Delete ${doc.name}"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
     </div>
   `;
 }
@@ -387,7 +452,7 @@ async function triggerExtraction(docId) {
 
   const key = sessionStorage.getItem("underwriter_key");
   const prov = sessionStorage.getItem("underwriter_provider") || "openrouter";
-  const model = sessionStorage.getItem("underwriter_model") || "meta-llama/llama-3.3-70b-instruct:free";
+  const model = sessionStorage.getItem("underwriter_model") || "openrouter/auto";
   const baseUrl = sessionStorage.getItem("underwriter_base_url") || "";
 
   if (!key) {
@@ -559,6 +624,10 @@ function viewExtractedData(docId) {
   const doc = documentsStore.find((d) => d.id === docId);
   if (!doc || !doc.result) return;
   currentViewingDoc = doc;
+  const originalButton = document.getElementById("downloadOriginalBtn");
+  originalButton.disabled = !doc.fileObject;
+  originalButton.classList.toggle("opacity-50", !doc.fileObject);
+  originalButton.classList.toggle("cursor-not-allowed", !doc.fileObject);
 
   document.getElementById("modalDocTitle").textContent = doc.name;
   const res = doc.result;
@@ -623,17 +692,19 @@ function renderTransactionsGrid(txns) {
 
   txns.forEach((tx) => {
     const tr = document.createElement("tr");
-    tr.className = "hover:bg-slate-50";
+    const isPositive = Number(tx.amount) > 0 || tx.type === "credit";
+    const isReturned = tx.type === "returned_item";
+    tr.className = "hover:bg-slate-50 cursor-pointer";
+    tr.dataset.transactionId = tx.trID || "";
+    tr.onclick = () => focusTransaction(tx.trID);
     tr.innerHTML = `
       <td class="py-2 px-3 text-slate-400">${tx.trID}</td>
       <td class="py-2 px-3 text-slate-600">${tx.postingDate}</td>
       <td class="py-2 px-4 text-slate-800 font-sans truncate max-w-xs" title="${tx.description}">${tx.description}</td>
-      <td class="py-2 px-3 text-right font-bold ${
-        tx.type === "credit" ? "text-emerald-600" : "text-slate-800"
-      }">${money(tx.amount)}</td>
+      <td class="py-2 px-3 text-right font-bold ${isPositive ? "text-emerald-600" : "text-rose-600"}">${signedMoney(tx.amount, isPositive)}</td>
       <td class="py-2 px-3"><span class="px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${
-        tx.type === "credit" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-700"
-      }">${tx.type}</span></td>
+        isPositive ? "bg-emerald-50 text-emerald-700" : isReturned ? "bg-rose-50 text-rose-700" : "bg-rose-50 text-rose-700"
+      }">${(tx.type || "unclassified").replace("_", " ")}</span></td>
       <td class="py-2 px-3 text-right text-slate-500">${money(tx.balance)}</td>
     `;
     tbody.appendChild(tr);
@@ -648,68 +719,113 @@ function renderMcaTab(uw) {
   const container = document.getElementById("mcaDetailsList");
   container.innerHTML = "";
 
-  (uw.analyzed_transactions || [])
-    .filter((t) => t.isMca || t.isBusinessLoan || t.isCreditCard)
-    .forEach((item) => {
+  const matchingTransactions = currentViewingDoc?.result?.extractedData?.transactions || [];
+  const items = (uw.analyzed_transactions || []).filter((t) => t.isMca || t.isBusinessLoan || t.isCreditCard || t.isBnpl || t.isReturnedItem);
+  if (!items.length) {
+    container.innerHTML = '<div class="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">No MCA, loan, card, BNPL, or returned-item risks were detected.</div>';
+    return;
+  }
+  items.forEach((item) => {
+      const transaction = matchingTransactions.find((tx) => tx.trID === item.trID) || {};
+      const kind = item.isMca ? "MCA" : item.isBusinessLoan ? "Business loan" : item.isCreditCard ? "Credit card" : item.isBnpl ? "BNPL" : "Returned item";
+      const style = item.isMca ? "amber" : item.isReturnedItem ? "rose" : "blue";
       const card = document.createElement("div");
       card.className =
-        "p-3 border border-slate-200 rounded-xl bg-slate-50 text-xs flex justify-between items-center";
+        "p-4 border border-slate-200 rounded-xl bg-white text-xs shadow-sm hover:border-indigo-300 transition";
       card.innerHTML = `
-        <div>
-          <span class="font-bold text-slate-800">${item.lenderName || item.loanLenderName || item.creditorName || "Financing Position"}</span>
-          <span class="ml-2 px-2 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold">${item.trCategory}</span>
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0"><div class="flex flex-wrap items-center gap-2"><span class="font-bold text-slate-900">${item.lenderName || item.loanLenderName || item.creditorName || item.bnplProvider || "Risk signal"}</span><span class="px-2 py-0.5 rounded bg-${style}-100 text-${style}-800 font-semibold">${kind}</span></div>
+          <p class="mt-1 text-slate-500 truncate" title="${transaction.description || ""}">${transaction.description || item.trCategory || "Classified financial transaction"}</p></div>
+          <button class="shrink-0 text-indigo-600 hover:text-indigo-800 font-semibold" onclick="focusTransaction('${item.trID}')">View transaction</button>
         </div>
-        <span class="font-mono text-slate-500">${item.trID}</span>
+        <div class="mt-3 flex items-center justify-between border-t pt-2 text-slate-500"><span>${transaction.postingDate || "Date unavailable"} · ${item.trID}</span><span class="font-mono font-bold ${Number(transaction.amount) < 0 ? "text-rose-600" : "text-emerald-600"}">${transaction.amount === undefined ? "" : signedMoney(transaction.amount)}</span></div>
       `;
       container.appendChild(card);
     });
 }
 
+function focusTransaction(trID) {
+  switchTab("txns");
+  const row = document.querySelector(`[data-transaction-id="${trID}"]`);
+  if (row) {
+    row.scrollIntoView({ behavior: "smooth", block: "center" });
+    row.classList.add("bg-indigo-50");
+    window.setTimeout(() => row.classList.remove("bg-indigo-50"), 1600);
+  }
+}
+
 async function loadDocPreview(file) {
-  const canvas = document.getElementById("pdfCanvas");
+  const pages = document.getElementById("pdfPages");
   const imgEl = document.getElementById("imageViewer");
   const indicator = document.getElementById("previewPageIndicator");
+  const controls = document.getElementById("pdfControls");
+  pages.innerHTML = "";
+  currentPdf = null;
+  if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
+  previewObjectUrl = null;
+  controls.classList.add("hidden");
 
   if (!file) {
-    if (canvas) {
-      canvas.classList.remove("hidden");
-      const ctx = canvas.getContext("2d");
-      canvas.width = 400;
-      canvas.height = 500;
-      ctx.fillStyle = "#f8fafc";
-      ctx.fillRect(0, 0, 400, 500);
-      ctx.fillStyle = "#64748b";
-      ctx.font = "14px sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("Interactive Demo Mode", 200, 240);
-      ctx.font = "12px sans-serif";
-      ctx.fillText("(Upload your own PDF to view pages)", 200, 265);
-    }
+    pages.innerHTML = '<div class="w-80 rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">Preview is available for uploaded source files. Demo records do not include an original document.</div>';
+    imgEl.classList.add("hidden");
     if (indicator) indicator.textContent = "Synthetic Demo";
     return;
   }
 
   if (file.type && file.type.includes("pdf")) {
-    canvas.classList.remove("hidden");
     imgEl.classList.add("hidden");
     try {
       const arrayBuffer = await file.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      const page = await pdf.getPage(1);
-      const viewport = page.getViewport({ scale: 1.2 });
-      canvas.height = viewport.height;
-      canvas.width = viewport.width;
-      await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
-      if (indicator) indicator.textContent = `Page 1 of ${pdf.numPages}`;
+      currentPdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      controls.classList.remove("hidden");
+      await renderAllPdfPages();
     } catch (e) {
       console.warn("Could not render PDF preview:", e);
+      pages.innerHTML = '<div class="rounded-xl bg-rose-50 p-4 text-sm text-rose-700">The PDF could not be rendered in this browser. You can still download the original file.</div>';
     }
   } else {
-    canvas.classList.add("hidden");
     imgEl.classList.remove("hidden");
-    imgEl.src = URL.createObjectURL(file);
+    previewObjectUrl = URL.createObjectURL(file);
+    imgEl.src = previewObjectUrl;
     if (indicator) indicator.textContent = "Image Document";
   }
+}
+
+async function renderAllPdfPages() {
+  if (!currentPdf) return;
+  const pages = document.getElementById("pdfPages");
+  const indicator = document.getElementById("previewPageIndicator");
+  pages.innerHTML = "";
+  for (let number = 1; number <= currentPdf.numPages; number += 1) {
+    const page = await currentPdf.getPage(number);
+    const viewport = page.getViewport({ scale: pdfZoom });
+    const wrapper = document.createElement("section");
+    wrapper.id = `pdf-page-${number}`;
+    wrapper.className = "relative rounded bg-white p-1 shadow-md";
+    const label = document.createElement("span");
+    label.className = "absolute right-2 top-2 rounded bg-slate-900/75 px-2 py-0.5 text-[10px] text-white";
+    label.textContent = `Page ${number}`;
+    const canvas = document.createElement("canvas");
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+    wrapper.append(canvas, label);
+    pages.appendChild(wrapper);
+  }
+  if (indicator) indicator.textContent = `${currentPdf.numPages} pages · ${Math.round(pdfZoom * 100)}%`;
+}
+
+function changePdfZoom(change) {
+  pdfZoom = Math.min(2, Math.max(0.6, +(pdfZoom + change).toFixed(2)));
+  renderAllPdfPages();
+}
+
+function scrollPdfPage(direction) {
+  if (!currentPdf) return;
+  const container = document.getElementById("pdfViewerContainer");
+  const sections = [...document.querySelectorAll("[id^='pdf-page-']")];
+  const currentIndex = sections.reduce((best, node, index) => Math.abs(node.offsetTop - container.scrollTop) < Math.abs(sections[best].offsetTop - container.scrollTop) ? index : best, 0);
+  sections[Math.max(0, Math.min(sections.length - 1, currentIndex + direction))]?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function switchTab(tabId) {
@@ -734,6 +850,10 @@ function switchTab(tabId) {
 
 function closeViewerModal() {
   document.getElementById("dataViewerModal").classList.add("hidden");
+  if (previewObjectUrl) {
+    URL.revokeObjectURL(previewObjectUrl);
+    previewObjectUrl = null;
+  }
 }
 
 function openSettingsModal() {
@@ -753,6 +873,27 @@ function money(v) {
   return v === null || v === undefined
     ? "N/A"
     : `$${parseFloat(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function signedMoney(v, positive) {
+  if (v === null || v === undefined || Number.isNaN(Number(v))) return "N/A";
+  const amount = Number(v);
+  const sign = positive === undefined ? (amount < 0 ? "−" : "+") : (positive ? "+" : "−");
+  return `${sign}$${Math.abs(amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function downloadOriginalFile() {
+  const file = currentViewingDoc?.fileObject;
+  if (!file) {
+    alert("The original file is not available for this demo or legacy record.");
+    return;
+  }
+  const href = URL.createObjectURL(file);
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = currentViewingDoc.name || file.name;
+  a.click();
+  window.setTimeout(() => URL.revokeObjectURL(href), 1000);
 }
 
 function downloadJsonExport() {

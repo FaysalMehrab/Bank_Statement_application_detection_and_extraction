@@ -8,6 +8,7 @@ import logging
 import os
 import shutil
 import tempfile
+from pathlib import Path
 from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -22,15 +23,21 @@ logger = logging.getLogger("main")
 
 app = FastAPI(title="Universal Financial Statement & Underwriting Engine")
 
+allowed_origins = [origin.strip() for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=allowed_origins or ["*"],
+    allow_credentials=bool(allowed_origins),
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 PROGRESS_STREAMS = {}
+
+
+@app.get("/api/health")
+def health_check():
+    return {"status": "ok"}
 
 
 @app.get("/api/providers")
@@ -86,7 +93,10 @@ async def extract_document(
     PROGRESS_STREAMS[job_id] = {"msg": "Initializing extraction...", "pct": 5, "done": False}
 
     temp_dir = tempfile.mkdtemp(prefix="stmt_")
-    file_path = os.path.join(temp_dir, file.filename)
+    suffix = Path(file.filename or "document").suffix.lower()
+    if suffix not in {".pdf", ".png", ".jpg", ".jpeg"}:
+        raise HTTPException(status_code=400, detail="Only PDF, PNG, and JPG files are supported.")
+    file_path = os.path.join(temp_dir, f"upload{suffix}")
 
     try:
         with open(file_path, "wb") as f:
