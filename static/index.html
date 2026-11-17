@@ -3,210 +3,594 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Universal Financial Statement & Underwriting Engine</title>
+  <title>Universal Financial Underwriting Engine — Statement Intelligence</title>
+  
+  <!-- Fonts: Inter & JetBrains Mono for pristine financial figures -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
   <!-- Tailwind CSS & Lucide Icons -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+            mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              200: '#c7d2fe',
+              300: '#a5b4fc',
+              400: '#818cf8',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+              800: '#3730a3',
+              900: '#312e81',
+              950: '#1e1b4b',
+            },
+            slate: {
+              750: '#283548',
+              850: '#131b2e',
+              925: '#090e1a',
+            }
+          },
+          boxShadow: {
+            'glow-sm': '0 0 15px -3px rgba(99, 102, 241, 0.15)',
+            'glow-md': '0 0 25px -4px rgba(99, 102, 241, 0.25)',
+            'card-light': '0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05)',
+            'card-hover': '0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 8px 10px -6px rgba(15, 23, 42, 0.04)',
+          }
+        }
+      }
+    }
+  </script>
   <script src="https://unpkg.com/lucide@latest"></script>
-  <!-- PDF.js for in-browser dual-pane viewing -->
+  
+  <!-- PDF.js for dual-pane high-fidelity viewer -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
   <style>
+    /* Sleek background mesh gradients */
+    body {
+      background-color: #f8fafc;
+      background-image: 
+        radial-gradient(at 10% 0%, rgba(99, 102, 241, 0.08) 0px, transparent 50%),
+        radial-gradient(at 90% 15%, rgba(16, 185, 129, 0.06) 0px, transparent 40%),
+        radial-gradient(at 50% 100%, rgba(244, 63, 94, 0.03) 0px, transparent 50%);
+      background-attachment: fixed;
+    }
+    
+    body.theme-dark {
+      background-color: #0b0f19;
+      background-image: 
+        radial-gradient(at 10% 0%, rgba(79, 70, 229, 0.18) 0px, transparent 60%),
+        radial-gradient(at 90% 15%, rgba(5, 150, 105, 0.12) 0px, transparent 50%),
+        radial-gradient(at 50% 90%, rgba(30, 41, 59, 0.4) 0px, transparent 60%);
+      background-attachment: fixed;
+      color: #f1f5f9;
+    }
+
+    /* Glassmorphism panels */
+    .glass-panel {
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(226, 232, 240, 0.8);
+    }
+    body.theme-dark .glass-panel {
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(51, 65, 85, 0.65);
+    }
+
+    .glass-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    body.theme-dark .glass-card {
+      background: #111827;
+      border: 1px solid #1f2937;
+    }
+
+    /* Custom high-performance scrollbars */
+    ::-webkit-scrollbar { width: 7px; height: 7px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+    body.theme-dark ::-webkit-scrollbar-thumb { background: #334155; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    body.theme-dark ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+    /* Custom animations */
+    @keyframes pulse-subtle {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.85; transform: scale(1.02); }
+    }
+    .animate-pulse-subtle {
+      animation: pulse-subtle 3s infinite ease-in-out;
+    }
+
+    /* Tab active indicator styling */
+    .tab-btn.active {
+      color: #4f46e5;
+      border-bottom-color: #4f46e5;
+      font-weight: 600;
+    }
+    body.theme-dark .tab-btn.active {
+      color: #818cf8;
+      border-bottom-color: #818cf8;
+    }
+
+    /* Tooltip styles */
     .has-tooltip:hover .tooltip { display: block; }
     .tooltip { display: none; }
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
   </style>
 </head>
-<body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen flex flex-col">
+<body class="font-sans antialiased min-h-screen flex flex-col text-slate-800 transition-colors duration-200">
 
-  <!-- TOP NAV BAR -->
-  <header class="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
-    <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-      <div class="flex items-center space-x-3">
-        <div class="bg-indigo-600 text-white p-2 rounded-lg shadow">
-          <i data-lucide="file-check-2" class="w-6 h-6"></i>
+  <!-- TOP APP BAR -->
+  <header class="glass-panel sticky top-0 z-40 border-b transition-colors duration-200 shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+      
+      <!-- Brand & Identity -->
+      <div class="flex items-center space-x-3.5">
+        <div class="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-700 via-brand-600 to-indigo-500 text-white shadow-md shadow-brand-500/20">
+          <i data-lucide="shield-check" class="w-5 h-5"></i>
+          <span class="absolute -top-1 -right-1 flex h-3 w-3">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 border-2 border-white dark:border-slate-900"></span>
+          </span>
         </div>
         <div>
-          <h1 class="text-lg font-bold text-slate-900 leading-tight">Universal Underwriter</h1>
-          <p class="text-xs text-slate-500">Bank Statement, Application & Financial Position Extractor</p>
+          <div class="flex items-center space-x-2">
+            <h1 class="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white tracking-tight leading-tight">
+              Underwrite<span class="text-brand-600 dark:text-brand-400">IQ</span>
+            </h1>
+            <span class="hidden sm:inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide bg-brand-50 text-brand-700 dark:bg-brand-950/70 dark:text-brand-300 border border-brand-200/60 dark:border-brand-800/60 uppercase">
+              Pro v2.4
+            </span>
+          </div>
+          <p class="text-[11px] text-slate-500 dark:text-slate-400 font-medium">Bank Statement & Financial Position Extractor</p>
         </div>
       </div>
 
-      <div class="flex items-center space-x-3">
-        <!-- Live Provider Indicator -->
-        <div id="activeModelBadge" class="hidden sm:flex items-center space-x-2 bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-full text-xs font-medium text-indigo-700">
-          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span id="activeModelLabel">Configuring API...</span>
-        </div>
+      <!-- Action & Configuration Toolbar -->
+      <div class="flex items-center space-x-2 sm:space-x-3">
+        
+        <!-- Live AI Provider & Model Badge -->
+        <button onclick="openSettingsModal()" id="activeModelBadge" class="hidden md:flex items-center space-x-2 bg-slate-100/90 dark:bg-slate-800/90 hover:bg-slate-200/80 dark:hover:bg-slate-700/80 border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-full text-xs font-medium text-slate-700 dark:text-slate-200 transition shadow-sm cursor-pointer group" title="Click to change AI Model or API Key">
+          <span class="relative flex h-2 w-2">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          </span>
+          <span id="activeModelLabel" class="truncate max-w-[170px] font-mono text-[11px]">Configure API...</span>
+          <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200 transition-transform duration-150"></i>
+        </button>
 
         <!-- API Key & Settings Trigger -->
-        <button onclick="openSettingsModal()" class="flex items-center space-x-2 bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-1.5 rounded-lg text-sm font-medium transition shadow-sm">
+        <button onclick="openSettingsModal()" class="flex items-center space-x-1.5 bg-brand-600 hover:bg-brand-700 text-white px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-150 shadow-sm shadow-brand-600/30 active:scale-95">
           <i data-lucide="key" class="w-4 h-4"></i>
-          <span>Use API Key</span>
+          <span class="hidden sm:inline">API Settings</span>
         </button>
 
-        <!-- Demo Mode Button -->
-        <button onclick="loadSampleDemo()" class="flex items-center space-x-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-sm font-medium transition">
+        <!-- Demo Data Loader -->
+        <button onclick="loadSampleDemo()" class="flex items-center space-x-1.5 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition shadow-sm active:scale-95" title="Load synthetic demonstration statements">
           <i data-lucide="sparkles" class="w-4 h-4 text-amber-500"></i>
-          <span>Demo Data</span>
+          <span class="hidden sm:inline">Demo Data</span>
         </button>
+
+        <!-- Help Guide Trigger -->
+        <button onclick="openHowToModal()" class="p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition" aria-label="How to use" title="How to use">
+          <i data-lucide="help-circle" class="w-4 h-4"></i>
+        </button>
+
+        <!-- Dark / Light Theme Toggle -->
+        <button id="themeToggle" onclick="toggleTheme()" aria-label="Toggle theme" title="Toggle dark/light mode" class="p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition">
+          <i data-lucide="moon" class="w-4 h-4"></i>
+        </button>
+
       </div>
     </div>
   </header>
 
-  <!-- MAIN APP CONTAINER -->
-  <main class="max-w-7xl mx-auto px-4 py-6 flex-1 w-full flex flex-col">
+  <!-- MAIN DASHBOARD CONTENT -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 flex-1 w-full flex flex-col space-y-6">
 
-    <!-- UPLOAD ZONE -->
-    <div id="dropZone" class="border-2 border-dashed border-slate-300 hover:border-indigo-500 bg-white hover:bg-indigo-50/20 rounded-2xl p-8 text-center transition cursor-pointer shadow-sm relative group mb-6">
-      <input type="file" id="fileInput" multiple accept=".pdf,.png,.jpg,.jpeg" class="hidden">
-      <div class="flex flex-col items-center justify-center space-y-2">
-        <div class="w-14 h-14 bg-indigo-50 group-hover:scale-110 text-indigo-600 rounded-2xl flex items-center justify-center transition">
-          <i data-lucide="upload-cloud" class="w-7 h-7"></i>
+    <!-- EXECUTIVE METRICS RIBBON (Quick Stats) -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      
+      <!-- Total Statements -->
+      <div class="glass-card rounded-2xl p-4 sm:p-5 flex items-center justify-between shadow-card-light">
+        <div>
+          <span class="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Statements</span>
+          <p id="statTotalDocs" class="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white mt-1">0</p>
+          <span class="text-[11px] text-slate-400 dark:text-slate-500 font-medium">In local workspace</span>
         </div>
-        <h3 class="text-base font-semibold text-slate-800">Drag & Drop Bank Statements, Applications, or Forms</h3>
-        <p class="text-xs text-slate-500">Supports Multi-page Statements, Applications, Voided Checks, State IDs (PDF, PNG, JPG)</p>
-        <span class="inline-block mt-2 bg-slate-100 text-slate-600 text-xs px-2.5 py-1 rounded-md font-medium">Or Browse Local Files</span>
+        <div class="w-11 h-11 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center justify-center">
+          <i data-lucide="files" class="w-5 h-5"></i>
+        </div>
+      </div>
+
+      <!-- Reconciled (100% Match) -->
+      <div class="glass-card rounded-2xl p-4 sm:p-5 flex items-center justify-between shadow-card-light border-l-4 border-l-emerald-500">
+        <div>
+          <span class="text-xs font-medium text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Reconciled ($0 Diff)</span>
+          <p id="statReconciledDocs" class="text-xl sm:text-2xl font-extrabold text-emerald-700 dark:text-emerald-300 mt-1">0</p>
+          <span id="statReconciledPct" class="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">100% accuracy</span>
+        </div>
+        <div class="w-11 h-11 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+          <i data-lucide="check-check" class="w-5 h-5"></i>
+        </div>
+      </div>
+
+      <!-- Discrepancy Warnings -->
+      <div class="glass-card rounded-2xl p-4 sm:p-5 flex items-center justify-between shadow-card-light border-l-4 border-l-amber-500">
+        <div>
+          <span class="text-xs font-medium text-amber-600 dark:text-amber-400 uppercase tracking-wider">Audit Discrepancies</span>
+          <p id="statWarningDocs" class="text-xl sm:text-2xl font-extrabold text-amber-700 dark:text-amber-300 mt-1">0</p>
+          <span class="text-[11px] text-amber-600 dark:text-amber-400 font-medium">Requires human review</span>
+        </div>
+        <div class="w-11 h-11 rounded-xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+          <i data-lucide="alert-triangle" class="w-5 h-5"></i>
+        </div>
+      </div>
+
+      <!-- Extracted Accounts Dropdown & Selector -->
+      <div class="glass-card rounded-2xl p-4 sm:p-5 flex flex-col justify-between shadow-card-light border-l-4 border-l-brand-500">
+        <div class="flex items-center justify-between">
+          <div>
+            <span class="text-xs font-semibold text-brand-600 dark:text-brand-400 uppercase tracking-wider">Extracted Accounts</span>
+            <p id="statUniqueAccounts" class="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white mt-1">0 Accounts</p>
+          </div>
+          <div class="w-11 h-11 rounded-xl bg-brand-50 dark:bg-brand-950/50 text-brand-600 dark:text-brand-400 flex items-center justify-center shrink-0">
+            <i data-lucide="building" class="w-5 h-5"></i>
+          </div>
+        </div>
+        <div class="mt-2.5 flex items-center gap-1.5">
+          <div class="relative flex-1 min-w-0">
+            <select id="accountFilterSelect" onchange="filterByAccount(this.value)" class="w-full text-xs font-medium bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500 appearance-none pr-7 truncate">
+              <option value="all">All Extracted Accounts</option>
+            </select>
+            <i data-lucide="chevron-down" class="w-3.5 h-3.5 absolute right-2 top-2.5 text-slate-400 pointer-events-none"></i>
+          </div>
+          <button id="viewSelectedAccountBtn" onclick="viewSelectedAccount()" title="View selected account statement" class="p-1.5 text-xs font-semibold bg-brand-50 hover:bg-brand-100 dark:bg-brand-950 dark:hover:bg-brand-900 text-brand-700 dark:text-brand-300 rounded-lg border border-brand-200 dark:border-brand-800 transition shrink-0 hidden">
+            <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- MODERN DRAG & DROP UPLOAD ZONE -->
+    <div id="dropZone" class="glass-card rounded-2xl p-8 sm:p-10 text-center transition-all duration-200 cursor-pointer shadow-card-light hover:shadow-card-hover border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-brand-500 dark:hover:border-brand-400 bg-white/60 dark:bg-slate-900/40 relative group">
+      <input type="file" id="fileInput" multiple accept=".pdf,.png,.jpg,.jpeg" class="hidden">
+      
+      <div class="flex flex-col items-center justify-center space-y-3">
+        <div class="w-16 h-16 rounded-2xl bg-brand-50 dark:bg-brand-950/80 text-brand-600 dark:text-brand-400 flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform duration-200">
+          <i data-lucide="upload-cloud" class="w-8 h-8"></i>
+        </div>
+        
+        <div class="space-y-1">
+          <h2 class="text-base sm:text-lg font-bold text-slate-800 dark:text-slate-100">
+            Drag & drop bank statements, tax returns, or underwriting files
+          </h2>
+          <p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-xl mx-auto">
+            High-speed extraction for multi-page PDF bank statements, MCA applications, voided checks, and ledger sheets.
+          </p>
+        </div>
+
+        <!-- Format & Feature Badges -->
+        <div class="flex flex-wrap items-center justify-center gap-2 pt-2">
+          <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+            <i data-lucide="file-text" class="w-3.5 h-3.5 mr-1 text-slate-400"></i> PDF Documents
+          </span>
+          <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+            <i data-lucide="image" class="w-3.5 h-3.5 mr-1 text-slate-400"></i> PNG / JPG Scans
+          </span>
+          <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+            <i data-lucide="hard-drive" class="w-3.5 h-3.5 mr-1 text-slate-400"></i> Up to 25 MB
+          </span>
+        </div>
+
+        <div class="pt-2 flex items-center space-x-3">
+          <button type="button" class="inline-flex items-center space-x-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-700 text-white shadow-sm transition">
+            <i data-lucide="folder-open" class="w-3.5 h-3.5"></i>
+            <span>Browse Local Files</span>
+          </button>
+          <span class="text-xs text-slate-400 font-medium">or</span>
+          <button type="button" onclick="event.stopPropagation(); loadSampleDemo();" class="text-xs font-semibold text-brand-600 dark:text-brand-400 hover:underline">
+            Load Demo Statements
+          </button>
+        </div>
+
       </div>
     </div>
 
-    <!-- SEARCH & STATUS CONTROLS -->
-    <div class="flex flex-col sm:flex-row items-center justify-between gap-3 mb-4">
-      <div class="relative w-full sm:w-80">
-        <i data-lucide="search" class="w-4 h-4 absolute left-3 top-3 text-slate-400"></i>
-        <input type="text" id="searchInput" oninput="renderDocumentTree()" placeholder="Search filename, bank, or holder..." class="w-full pl-9 pr-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm">
+    <!-- DOCUMENT MANAGEMENT & FILTER TOOLBAR -->
+    <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">
+      
+      <!-- Search Input -->
+      <div class="relative flex-1 max-w-md">
+        <i data-lucide="search" class="w-4 h-4 absolute left-3.5 top-3 text-slate-400"></i>
+        <input type="text" id="searchInput" oninput="renderDocumentTree()" placeholder="Search by filename, bank, or holder name..." class="w-full pl-9 pr-9 py-2 text-sm bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 shadow-sm transition">
+        <button id="clearSearchBtn" onclick="document.getElementById('searchInput').value=''; renderDocumentTree();" class="hidden absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
       </div>
-      <div class="flex items-center space-x-2 w-full sm:w-auto justify-end">
-        <select id="statusFilter" onchange="renderDocumentTree()" class="bg-white border border-slate-200 text-slate-700 text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm">
-          <option value="all">All Documents</option>
-          <option value="reconciled">Reconciled ($0.00 Diff)</option>
-          <option value="warning">Math Warnings</option>
-          <option value="pending">Not Extracted</option>
-        </select>
-        <button onclick="clearAllDocs()" class="text-slate-400 hover:text-rose-600 p-2 text-xs flex items-center space-x-1" title="Clear All Documents">
+
+      <!-- Filter & Bulk Actions -->
+      <div class="flex items-center space-x-2.5 self-end sm:self-auto">
+        <div class="relative">
+          <select id="statusFilter" onchange="renderDocumentTree()" class="bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs sm:text-sm font-medium rounded-xl px-3.5 py-2 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500 shadow-sm transition appearance-none pr-8">
+            <option value="all">All Documents</option>
+            <option value="reconciled">Reconciled ($0.00 Diff)</option>
+            <option value="warning">Math Warnings</option>
+            <option value="pending">Not Extracted</option>
+          </select>
+          <i data-lucide="chevron-down" class="w-4 h-4 absolute right-2.5 top-2.5 text-slate-400 pointer-events-none"></i>
+        </div>
+
+        <button id="batchExtractBtn" onclick="extractAllPending()" class="hidden items-center space-x-1.5 px-3 py-2 text-xs font-semibold bg-brand-50 hover:bg-brand-100 dark:bg-brand-950/70 dark:hover:bg-brand-900 text-brand-700 dark:text-brand-300 border border-brand-200 dark:border-brand-800 rounded-xl transition shadow-sm" title="Run extraction on all pending documents">
+          <i data-lucide="play" class="w-3.5 h-3.5"></i>
+          <span>Extract All</span>
+        </button>
+
+        <button onclick="clearAllDocs()" class="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl border border-transparent hover:border-rose-200 dark:hover:border-rose-900 transition" title="Clear all documents from library">
           <i data-lucide="trash-2" class="w-4 h-4"></i>
         </button>
       </div>
+
     </div>
 
-    <!-- DATE-GROUPED DOCUMENT LIBRARY -->
-    <div id="documentLibrary" class="space-y-6 flex-1"></div>
+    <!-- DOCUMENT LIBRARY LIST (Date Grouped) -->
+    <div id="documentLibrary" class="space-y-5 flex-1 pb-10"></div>
 
   </main>
 
   <!-- SPLIT SCREEN DATA VIEWER MODAL -->
-  <div id="dataViewerModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-2 sm:p-4">
-    <div class="bg-white w-full max-w-7xl h-[94vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200">
+  <div id="dataViewerModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-md z-50 hidden flex items-center justify-center p-2 sm:p-4 transition-opacity">
+    <div class="glass-card bg-white dark:bg-slate-900 w-full max-w-7xl h-[94vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-150">
       
-      <!-- Viewer Header -->
-      <div class="px-6 py-3.5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
-        <div class="flex items-center space-x-3 truncate">
-          <span id="modalDocBadge" class="px-2.5 py-0.5 rounded-full text-xs font-semibold"></span>
-          <h2 id="modalDocTitle" class="text-base font-bold text-slate-900 truncate">Document Analysis</h2>
+      <!-- Modal Top Header -->
+      <div class="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/90 dark:bg-slate-900/90">
+        
+        <!-- Document Badge & Filename -->
+        <div class="flex items-center space-x-3 truncate mr-4">
+          <span id="modalDocBadge" class="px-2.5 py-0.5 rounded-full text-xs font-bold shrink-0"></span>
+          <div class="truncate">
+            <h2 id="modalDocTitle" class="text-sm sm:text-base font-bold text-slate-900 dark:text-white truncate">Document Analysis</h2>
+            <p id="modalDocSubtitle" class="text-[11px] text-slate-500 dark:text-slate-400 truncate">Dual-pane underwriting inspector</p>
+          </div>
         </div>
-        <div class="flex items-center space-x-2">
-          <button onclick="downloadOriginalFile()" id="downloadOriginalBtn" class="px-3 py-1.5 text-xs bg-slate-900 hover:bg-slate-800 text-white rounded-lg flex items-center space-x-1.5 font-medium transition">
+
+        <!-- Export & Close Actions -->
+        <div class="flex items-center space-x-2 shrink-0">
+          <button onclick="downloadOriginalFile()" id="downloadOriginalBtn" class="px-2.5 sm:px-3 py-1.5 text-xs bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white rounded-lg flex items-center space-x-1.5 font-medium transition shadow-sm" title="Download original source file">
             <i data-lucide="file-down" class="w-3.5 h-3.5"></i>
-            <span>Original</span>
+            <span class="hidden sm:inline">Original File</span>
           </button>
-          <button onclick="downloadJsonExport()" class="px-3 py-1.5 text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg flex items-center space-x-1.5 font-medium transition">
-            <i data-lucide="download" class="w-3.5 h-3.5"></i>
-            <span>Export JSON</span>
+          
+          <button onclick="downloadCsvExport()" class="px-2.5 sm:px-3 py-1.5 text-xs bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg flex items-center space-x-1.5 font-medium transition border border-slate-200 dark:border-slate-700" title="Export transactions to CSV">
+            <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5 text-emerald-600"></i>
+            <span class="hidden sm:inline">Export CSV</span>
           </button>
-          <button onclick="downloadCsvExport()" class="px-3 py-1.5 text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg flex items-center space-x-1.5 font-medium transition">
-            <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i>
-            <span>Export CSV</span>
+
+          <button onclick="downloadJsonExport()" class="px-2.5 sm:px-3 py-1.5 text-xs bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg flex items-center space-x-1.5 font-medium transition border border-slate-200 dark:border-slate-700" title="Export full extraction JSON">
+            <i data-lucide="download" class="w-3.5 h-3.5 text-brand-600"></i>
+            <span class="hidden sm:inline">Export JSON</span>
           </button>
-          <button onclick="closeViewerModal()" class="text-slate-400 hover:text-slate-600 p-1.5">
+
+          <div class="h-4 w-px bg-slate-200 dark:bg-slate-700 mx-1"></div>
+
+          <button onclick="closeViewerModal()" class="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition" aria-label="Close dialog">
             <i data-lucide="x" class="w-5 h-5"></i>
           </button>
         </div>
+
       </div>
 
       <!-- Split Layout Body -->
-      <div class="flex-1 flex flex-col lg:flex-row overflow-auto lg:overflow-hidden">
+      <div class="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
         
-        <!-- Left: Document Preview (45%) -->
-        <div class="w-full lg:w-5/12 min-h-[42vh] lg:min-h-0 border-b lg:border-b-0 lg:border-r border-slate-200 bg-slate-100 flex flex-col relative overflow-hidden">
-          <div class="px-3 py-2 bg-slate-200/70 border-b border-slate-300 flex items-center justify-between gap-2 text-xs text-slate-600">
-            <div class="flex items-center gap-2 min-w-0"><i data-lucide="file-search" class="w-3.5 h-3.5"></i><span class="font-semibold">Original document</span><span id="previewPageIndicator" class="truncate">Loading preview…</span></div>
+        <!-- Left: Document Preview (44%) -->
+        <div class="w-full lg:w-5/12 h-[38vh] lg:h-full border-b lg:border-b-0 lg:border-r border-slate-200 dark:border-slate-800 bg-slate-900/90 dark:bg-slate-950 flex flex-col relative overflow-hidden">
+          
+          <!-- Document Preview Controls Toolbar -->
+          <div class="px-3 py-2 bg-slate-850 border-b border-slate-800 flex items-center justify-between gap-2 text-xs text-slate-300">
+            <div class="flex items-center gap-2 min-w-0">
+              <i data-lucide="file-search" class="w-3.5 h-3.5 text-brand-400"></i>
+              <span class="font-semibold text-slate-200">Source Document</span>
+              <span id="previewPageIndicator" class="truncate text-slate-400 text-[11px]">Loading preview…</span>
+            </div>
+            
             <div id="pdfControls" class="hidden shrink-0 flex items-center gap-1">
-              <button onclick="changePdfZoom(-0.2)" class="p-1 hover:bg-slate-300 rounded" title="Zoom out"><i data-lucide="minus" class="w-3.5 h-3.5"></i></button>
-              <button onclick="changePdfZoom(0.2)" class="p-1 hover:bg-slate-300 rounded" title="Zoom in"><i data-lucide="plus" class="w-3.5 h-3.5"></i></button>
-              <button onclick="scrollPdfPage(-1)" class="p-1 hover:bg-slate-300 rounded" title="Previous page"><i data-lucide="chevron-up" class="w-3.5 h-3.5"></i></button>
-              <button onclick="scrollPdfPage(1)" class="p-1 hover:bg-slate-300 rounded" title="Next page"><i data-lucide="chevron-down" class="w-3.5 h-3.5"></i></button>
+              <button onclick="changePdfZoom(-0.2)" class="p-1 hover:bg-slate-750 text-slate-300 hover:text-white rounded" title="Zoom out"><i data-lucide="minus" class="w-3.5 h-3.5"></i></button>
+              <button onclick="changePdfZoom(0.2)" class="p-1 hover:bg-slate-750 text-slate-300 hover:text-white rounded" title="Zoom in"><i data-lucide="plus" class="w-3.5 h-3.5"></i></button>
+              <div class="w-px h-3 bg-slate-700 mx-0.5"></div>
+              <button onclick="scrollPdfPage(-1)" class="p-1 hover:bg-slate-750 text-slate-300 hover:text-white rounded" title="Previous page"><i data-lucide="chevron-up" class="w-3.5 h-3.5"></i></button>
+              <button onclick="scrollPdfPage(1)" class="p-1 hover:bg-slate-750 text-slate-300 hover:text-white rounded" title="Next page"><i data-lucide="chevron-down" class="w-3.5 h-3.5"></i></button>
             </div>
           </div>
-          <div id="pdfViewerContainer" class="flex-1 overflow-auto p-4">
-            <div id="pdfPages" class="mx-auto flex w-fit flex-col items-center gap-4"></div>
-            <img id="imageViewer" class="mx-auto shadow-md rounded bg-white max-w-full hidden" />
+
+          <!-- Document Canvas / Image Container -->
+          <div id="pdfViewerContainer" class="flex-1 overflow-hidden p-2 flex items-stretch justify-center h-full">
+            <div id="pdfPages" class="w-full h-full flex flex-col items-center justify-center"></div>
+            <img id="imageViewer" class="mx-auto shadow-xl rounded-lg bg-white max-w-full hidden object-contain" alt="Original statement upload" />
           </div>
+
         </div>
 
-        <!-- Right: Tabbed Structured Workspace (55%) -->
-        <div class="w-full lg:w-7/12 min-h-[48vh] lg:min-h-0 flex flex-col bg-white overflow-hidden">
+        <!-- Right: Tabbed Structured Workspace (56%) -->
+        <div class="w-full lg:w-7/12 flex-1 flex flex-col bg-white dark:bg-slate-900 overflow-hidden min-h-0">
           
-          <!-- Workspace Navigation Tabs -->
-          <div class="flex overflow-x-auto border-b border-slate-200 px-4 sm:px-6 pt-3 space-x-5 text-sm font-medium whitespace-nowrap">
-            <button onclick="switchTab('summary')" id="tabBtn-summary" class="pb-3 border-b-2 border-indigo-600 text-indigo-600 font-semibold">Statement Overview</button>
-            <button onclick="switchTab('audit')" id="tabBtn-audit" class="pb-3 border-b-2 border-transparent text-slate-500 hover:text-slate-800">Reconciliation Audit</button>
-            <button onclick="switchTab('txns')" id="tabBtn-txns" class="pb-3 border-b-2 border-transparent text-slate-500 hover:text-slate-800">Transactions Grid</button>
-            <button onclick="switchTab('mca')" id="tabBtn-mca" class="pb-3 border-b-2 border-transparent text-slate-500 hover:text-slate-800">MCA & Underwriting</button>
+          <!-- Workspace Segmented Navigation Tabs -->
+          <div class="flex overflow-x-auto border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 pt-3 space-x-6 text-xs sm:text-sm font-medium whitespace-nowrap bg-slate-50/50 dark:bg-slate-900/50 shrink-0">
+            
+            <button onclick="switchTab('summary')" id="tabBtn-summary" class="tab-btn active pb-3 border-b-2 flex items-center space-x-2 transition">
+              <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+              <span>Statement Overview</span>
+            </button>
+
+            <button onclick="switchTab('audit')" id="tabBtn-audit" class="tab-btn pb-3 border-b-2 border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 flex items-center space-x-2 transition">
+              <i data-lucide="scale" class="w-4 h-4"></i>
+              <span>Reconciliation Audit</span>
+            </button>
+
+            <button onclick="switchTab('txns')" id="tabBtn-txns" class="tab-btn pb-3 border-b-2 border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 flex items-center space-x-2 transition">
+              <i data-lucide="list-ordered" class="w-4 h-4"></i>
+              <span>Transactions Grid</span>
+              <span id="tabTxnCountBadge" class="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200 dark:bg-slate-800 font-mono">0</span>
+            </button>
+
+            <button onclick="switchTab('mca')" id="tabBtn-mca" class="tab-btn pb-3 border-b-2 border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 flex items-center space-x-2 transition">
+              <i data-lucide="shield-alert" class="w-4 h-4"></i>
+              <span>MCA & Underwriting</span>
+              <span id="tabMcaCountBadge" class="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 font-bold hidden">0</span>
+            </button>
+
           </div>
 
-          <!-- Tab 1: Overview -->
-          <div id="tabContent-summary" class="flex-1 overflow-auto p-6 space-y-6">
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl">
-                <span class="text-xs text-slate-500 font-medium">Beginning Balance</span>
-                <p id="kpiBegBal" class="text-lg font-bold text-slate-800 mt-1">$0.00</p>
+          <!-- TAB 1: OVERVIEW & CASHFLOW -->
+          <div id="tabContent-summary" class="flex-1 overflow-auto p-5 sm:p-6 space-y-6">
+            
+            <!-- Key Balance Stat Cards -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+              
+              <!-- Beginning Balance -->
+              <div class="p-4 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl">
+                <span class="text-[11px] text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider">Beginning Balance</span>
+                <p id="kpiBegBal" class="text-base sm:text-lg font-bold text-slate-800 dark:text-white mt-1 font-mono">$0.00</p>
               </div>
-              <div class="p-4 bg-emerald-50/60 border border-emerald-200 rounded-xl">
-                <span class="text-xs text-emerald-600 font-medium">Total Deposits</span>
-                <p id="kpiDeposits" class="text-lg font-bold text-emerald-700 mt-1">$0.00</p>
+
+              <!-- Total Deposits -->
+              <div class="p-4 bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800 rounded-xl">
+                <span class="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium uppercase tracking-wider">Total Deposits</span>
+                <p id="kpiDeposits" class="text-base sm:text-lg font-bold text-emerald-700 dark:text-emerald-300 mt-1 font-mono">$0.00</p>
               </div>
-              <div class="p-4 bg-rose-50/60 border border-rose-200 rounded-xl">
-                <span class="text-xs text-rose-600 font-medium">Total Withdrawals</span>
-                <p id="kpiWithdrawals" class="text-lg font-bold text-rose-700 mt-1">$0.00</p>
+
+              <!-- Total Withdrawals -->
+              <div class="p-4 bg-rose-50/70 dark:bg-rose-950/40 border border-rose-200/80 dark:border-rose-800 rounded-xl">
+                <span class="text-[11px] text-rose-700 dark:text-rose-400 font-medium uppercase tracking-wider">Total Withdrawals</span>
+                <p id="kpiWithdrawals" class="text-base sm:text-lg font-bold text-rose-700 dark:text-rose-300 mt-1 font-mono">$0.00</p>
               </div>
-              <div class="p-4 bg-indigo-50/60 border border-indigo-200 rounded-xl">
-                <span class="text-xs text-indigo-600 font-medium">Ending Balance</span>
-                <p id="kpiEndBal" class="text-lg font-bold text-indigo-700 mt-1">$0.00</p>
+
+              <!-- Ending Balance -->
+              <div class="p-4 bg-brand-50/70 dark:bg-brand-950/40 border border-brand-200/80 dark:border-brand-800 rounded-xl">
+                <span class="text-[11px] text-brand-700 dark:text-brand-400 font-medium uppercase tracking-wider">Ending Balance</span>
+                <p id="kpiEndBal" class="text-base sm:text-lg font-bold text-brand-700 dark:text-brand-300 mt-1 font-mono">$0.00</p>
+              </div>
+
+            </div>
+
+            <!-- Visual Cashflow Comparison Bar -->
+            <div class="border border-slate-200 dark:border-slate-800 rounded-xl p-4 bg-white dark:bg-slate-850 shadow-sm space-y-2">
+              <div class="flex items-center justify-between text-xs">
+                <span class="font-semibold text-slate-700 dark:text-slate-200 flex items-center space-x-1.5">
+                  <i data-lucide="split" class="w-3.5 h-3.5 text-slate-400"></i>
+                  <span>Cash Flow In vs Out Ratio</span>
+                </span>
+                <span id="cashflowNetChange" class="font-mono font-bold text-xs">+$0.00 Net</span>
+              </div>
+              <div class="w-full h-3 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden flex">
+                <div id="cashflowDepositBar" class="bg-emerald-500 h-full transition-all duration-500" style="width: 50%" title="Deposits"></div>
+                <div id="cashflowWithdrawalBar" class="bg-rose-500 h-full transition-all duration-500" style="width: 50%" title="Withdrawals"></div>
+              </div>
+              <div class="flex items-center justify-between text-[11px] text-slate-400">
+                <span class="flex items-center space-x-1"><span class="w-2 h-2 rounded-full bg-emerald-500"></span><span>Deposits</span></span>
+                <span class="flex items-center space-x-1"><span class="w-2 h-2 rounded-full bg-rose-500"></span><span>Withdrawals</span></span>
               </div>
             </div>
 
-            <div class="border border-slate-200 rounded-xl p-4 space-y-3 bg-white shadow-sm text-sm">
-              <h4 class="font-bold text-slate-800 border-b pb-2">Account Metadata</h4>
-              <div class="grid grid-cols-2 gap-y-2">
-                <div><span class="text-slate-400">Bank Name:</span> <strong id="valBank" class="text-slate-700"></strong></div>
-                <div><span class="text-slate-400">Account Number:</span> <strong id="valAccNum" class="text-slate-700"></strong></div>
-                <div><span class="text-slate-400">Account Holder:</span> <strong id="valHolder" class="text-slate-700"></strong></div>
-                <div><span class="text-slate-400">Statement Period:</span> <strong id="valPeriod" class="text-slate-700"></strong></div>
+            <!-- Account & Entity Metadata Card -->
+            <div class="border border-slate-200 dark:border-slate-800 rounded-xl p-5 bg-white dark:bg-slate-850 shadow-sm space-y-3.5">
+              <h4 class="font-bold text-sm text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-750 pb-2.5 flex items-center space-x-2">
+                <i data-lucide="building-2" class="w-4 h-4 text-brand-600"></i>
+                <span>Account & Entity Information</span>
+              </h4>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-y-3 gap-x-6 text-sm">
+                <div>
+                  <span class="text-xs text-slate-400 uppercase tracking-wider block font-medium">Bank Institution</span>
+                  <strong id="valBank" class="text-slate-800 dark:text-slate-100 font-semibold text-sm"></strong>
+                </div>
+                <div>
+                  <span class="text-xs text-slate-400 uppercase tracking-wider block font-medium">Account Number</span>
+                  <strong id="valAccNum" class="text-slate-800 dark:text-slate-100 font-mono text-sm"></strong>
+                </div>
+                <div>
+                  <span class="text-xs text-slate-400 uppercase tracking-wider block font-medium">Account Holder</span>
+                  <strong id="valHolder" class="text-slate-800 dark:text-slate-100 font-semibold text-sm"></strong>
+                </div>
+                <div>
+                  <span class="text-xs text-slate-400 uppercase tracking-wider block font-medium">Statement Period</span>
+                  <strong id="valPeriod" class="text-slate-800 dark:text-slate-100 font-mono text-sm"></strong>
+                </div>
               </div>
             </div>
+
           </div>
 
-          <!-- Tab 2: Reconciliation Audit -->
-          <div id="tabContent-audit" class="flex-1 overflow-auto p-6 space-y-4 hidden">
-            <div id="auditBanner" class="p-4 rounded-xl flex items-start space-x-3"></div>
-            <div class="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-              <table class="w-full text-left text-sm">
-                <thead class="bg-slate-50 text-slate-500 font-medium border-b">
+          <!-- TAB 2: RECONCILIATION AUDIT -->
+          <div id="tabContent-audit" class="flex-1 overflow-auto p-5 sm:p-6 space-y-5 hidden">
+            
+            <!-- Audit Banner -->
+            <div id="auditBanner" class="p-4 sm:p-5 rounded-xl flex items-start space-x-3.5 shadow-sm"></div>
+
+            <!-- Mathematical Equation Breakdown -->
+            <div class="p-4 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl space-y-2">
+              <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Universal Reconciliation Equation</span>
+              <p class="font-mono text-xs sm:text-sm text-slate-700 dark:text-slate-300">
+                Beginning Balance (<span id="eqBeg">$0</span>) + Total Deposits (<span id="eqDep">$0</span>) − Total Withdrawals (<span id="eqWith">$0</span>) = Calculated Ending Balance (<span id="eqEnd">$0</span>)
+              </p>
+            </div>
+
+            <!-- Checks Table -->
+            <div class="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
+              <table class="w-full text-left text-xs sm:text-sm">
+                <thead class="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold border-b border-slate-200 dark:border-slate-700">
                   <tr>
                     <th class="py-3 px-4">Verification Check</th>
-                    <th class="py-3 px-4">Mathematical Status</th>
+                    <th class="py-3 px-4">Status</th>
                     <th class="py-3 px-4 text-right">Discrepancy (Diff)</th>
                   </tr>
                 </thead>
-                <tbody id="auditTableBody" class="divide-y divide-slate-100"></tbody>
+                <tbody id="auditTableBody" class="divide-y divide-slate-100 dark:divide-slate-800"></tbody>
               </table>
             </div>
+
           </div>
 
-          <!-- Tab 3: Transactions DataGrid -->
-          <div id="tabContent-txns" class="flex-1 overflow-auto p-4 hidden">
-            <div class="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+          <!-- TAB 3: TRANSACTIONS DATAGRID -->
+          <div id="tabContent-txns" class="flex-1 flex flex-col p-4 space-y-3 hidden min-h-0">
+            
+            <!-- Filter & Search Toolbar Inside Transactions Table -->
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 shrink-0">
+              <div class="relative flex-1">
+                <i data-lucide="search" class="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400"></i>
+                <input type="text" id="txnSearchInput" oninput="filterTransactionsGrid()" placeholder="Filter description or transaction ID..." class="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500">
+              </div>
+              <div class="flex items-center space-x-2">
+                <select id="txnTypeFilter" onchange="filterTransactionsGrid()" class="text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none">
+                  <option value="all">All Types</option>
+                  <option value="credit">Credits (Deposits)</option>
+                  <option value="debit">Debits (Withdrawals)</option>
+                  <option value="returned">Returned / NSF Items</option>
+                </select>
+                <span id="txnFilterSummary" class="text-[11px] text-slate-400 font-medium whitespace-nowrap">0 rows</span>
+              </div>
+            </div>
+
+            <!-- Scrollable Table -->
+            <div class="border border-slate-200 dark:border-slate-800 rounded-xl overflow-auto shadow-sm flex-1">
               <table class="w-full text-left text-xs">
-                <thead class="bg-slate-50 text-slate-600 font-semibold uppercase tracking-wider sticky top-0 border-b">
+                <thead class="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold uppercase tracking-wider sticky top-0 border-b border-slate-200 dark:border-slate-700 z-10">
                   <tr>
                     <th class="py-2.5 px-3">ID</th>
                     <th class="py-2.5 px-3">Date</th>
@@ -216,28 +600,60 @@
                     <th class="py-2.5 px-3 text-right">Balance</th>
                   </tr>
                 </thead>
-                <tbody id="txnsTableBody" class="divide-y divide-slate-100 font-mono"></tbody>
+                <tbody id="txnsTableBody" class="divide-y divide-slate-100 dark:divide-slate-800 font-mono"></tbody>
               </table>
             </div>
+
           </div>
 
-          <!-- Tab 4: MCA & Underwriting -->
-          <div id="tabContent-mca" class="flex-1 overflow-auto p-6 space-y-6 hidden">
-            <div class="grid grid-cols-3 gap-4">
-              <div class="p-4 bg-amber-50/70 border border-amber-200 rounded-xl">
-                <span class="text-xs text-amber-700 font-medium">MCA Positions</span>
-                <p id="mcaCount" class="text-xl font-bold text-amber-900 mt-1">0</p>
+          <!-- TAB 4: MCA & UNDERWRITING -->
+          <div id="tabContent-mca" class="flex-1 overflow-auto p-5 sm:p-6 space-y-6 hidden">
+            
+            <!-- Risk Metric Cards -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+              
+              <!-- MCA Count -->
+              <div class="p-3.5 bg-amber-50/70 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800 rounded-xl">
+                <span class="text-[11px] text-amber-700 dark:text-amber-400 font-medium uppercase tracking-wider">MCA Positions</span>
+                <p id="mcaCount" class="text-xl sm:text-2xl font-extrabold text-amber-900 dark:text-amber-200 mt-0.5">0</p>
+                <span class="text-[10px] text-amber-600 dark:text-amber-400">Daily/Weekly debits</span>
               </div>
-              <div class="p-4 bg-blue-50/70 border border-blue-200 rounded-xl">
-                <span class="text-xs text-blue-700 font-medium">Credit Card / Loan</span>
-                <p id="loanCount" class="text-xl font-bold text-blue-900 mt-1">0</p>
+
+              <!-- Credit Card Count -->
+              <div class="p-3.5 bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200/80 dark:border-blue-800 rounded-xl">
+                <span class="text-[11px] text-blue-700 dark:text-blue-400 font-medium uppercase tracking-wider">Credit Cards</span>
+                <p id="ccCount" class="text-xl sm:text-2xl font-extrabold text-blue-900 dark:text-blue-200 mt-0.5">0</p>
+                <span class="text-[10px] text-blue-600 dark:text-blue-400">Revolving lines</span>
               </div>
-              <div class="p-4 bg-rose-50/70 border border-rose-200 rounded-xl">
-                <span class="text-xs text-rose-700 font-medium">Returned Unpaid (NSF)</span>
-                <p id="nsfCount" class="text-xl font-bold text-rose-900 mt-1">0</p>
+
+              <!-- Business Loans & BNPL -->
+              <div class="p-3.5 bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-800 rounded-xl">
+                <span class="text-[11px] text-indigo-700 dark:text-indigo-400 font-medium uppercase tracking-wider">Loans & BNPL</span>
+                <p id="loanCount" class="text-xl sm:text-2xl font-extrabold text-indigo-900 dark:text-indigo-200 mt-0.5">0</p>
+                <span class="text-[10px] text-indigo-600 dark:text-indigo-400">Term & installment debt</span>
+              </div>
+
+              <!-- NSF / Returned -->
+              <div class="p-3.5 bg-rose-50/70 dark:bg-rose-950/40 border border-rose-200/80 dark:border-rose-800 rounded-xl">
+                <span class="text-[11px] text-rose-700 dark:text-rose-400 font-medium uppercase tracking-wider">Returned (NSF)</span>
+                <p id="nsfCount" class="text-xl sm:text-2xl font-extrabold text-rose-900 dark:text-rose-200 mt-0.5">0</p>
+                <span class="text-[10px] text-rose-600 dark:text-rose-400">Negative risk signals</span>
+              </div>
+
+            </div>
+
+            <!-- Category Filter / Accordion Header Toolbar -->
+            <div class="flex items-center justify-between pt-1">
+              <h4 class="font-bold text-xs text-slate-500 uppercase tracking-wider">Categorized Positions & Debt Items</h4>
+              <div class="flex items-center space-x-2">
+                <button type="button" onclick="toggleAllMcaAccordions(true)" class="px-2.5 py-1 text-[11px] font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition">Expand All</button>
+                <button type="button" onclick="toggleAllMcaAccordions(false)" class="px-2.5 py-1 text-[11px] font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition">Collapse All</button>
               </div>
             </div>
-            <div id="mcaDetailsList" class="space-y-3"></div>
+
+            <!-- Detected Positions Dropdown / Accordion Container -->
+            <div id="mcaCategoriesAccordion" class="space-y-3"></div>
+
           </div>
 
         </div>
@@ -247,58 +663,177 @@
     </div>
   </div>
 
-  <!-- BYOK SETTINGS MODAL -->
-  <div id="settingsModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-    <div class="bg-white w-full max-w-lg rounded-2xl shadow-xl border border-slate-200 p-6 space-y-5">
-      <div class="flex items-center justify-between border-b pb-3">
-        <h3 class="text-lg font-bold text-slate-900 flex items-center space-x-2">
-          <i data-lucide="shield-check" class="w-5 h-5 text-indigo-600"></i>
-          <span>API Key & Provider Settings</span>
-        </h3>
-        <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-slate-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+  <!-- API KEY & PROVIDER SETTINGS MODAL -->
+  <div id="settingsModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4 transition-opacity">
+    <div class="glass-card bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-5 animate-in fade-in zoom-in-95 duration-150">
+      
+      <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3.5">
+        <div class="flex items-center space-x-2.5">
+          <div class="w-8 h-8 rounded-lg bg-brand-50 dark:bg-brand-950 text-brand-600 dark:text-brand-400 flex items-center justify-center">
+            <i data-lucide="cpu" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-slate-900 dark:text-white">AI Provider & Model Settings</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Configure BYOK LLM connection</p>
+          </div>
+        </div>
+        <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
       </div>
 
-      <div class="space-y-4 text-sm">
+      <!-- Settings Form Fields -->
+      <div class="space-y-4 text-xs sm:text-sm">
+        
+        <!-- Provider Select -->
         <div>
-          <label class="block font-medium text-slate-700 mb-1">Select AI Provider</label>
-          <select id="settingProvider" onchange="onProviderChanged()" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500">
-            <option value="openrouter" selected>OpenRouter</option>
-            <option value="openai">OpenAI</option>
-            <option value="anthropic">Anthropic (Claude)</option>
-            <option value="deepseek">DeepSeek (Direct)</option>
+          <label class="block font-semibold text-slate-700 dark:text-slate-200 mb-1">AI Provider</label>
+          <select id="settingProvider" onchange="onProviderChanged()" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-brand-500">
+            <option value="openai" selected>OpenAI (GPT-5.6 Series / o-Series)</option>
+            <option value="anthropic">Anthropic (Claude 5.5 / 3.7 Series)</option>
+            <option value="openrouter">OpenRouter (Frontier Multi-Provider)</option>
+            <option value="deepseek">DeepSeek (Direct API)</option>
             <option value="custom">Custom (Self-Hosted / Proxy)</option>
           </select>
         </div>
 
+        <!-- Model Selection -->
         <div>
-          <label class="block font-medium text-slate-700 mb-1">Model Selection</label>
-          <select id="settingModelSelect" onchange="onModelSelectChanged()" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 mb-2"></select>
-          <input type="text" id="settingModelCustom" placeholder="Or enter any provider-supported model ID" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs hidden">
+          <label class="block font-semibold text-slate-700 dark:text-slate-200 mb-1">Model Selection</label>
+          <select id="settingModelSelect" onchange="onModelSelectChanged()" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-brand-500 mb-2"></select>
+          <input type="text" id="settingModelCustom" placeholder="Or enter any custom provider model identifier" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-xs text-slate-800 dark:text-slate-100 hidden">
         </div>
 
+        <!-- Reasoning / Thinking Effort (Model specific) -->
+        <div id="reasoningEffortWrapper" class="hidden">
+          <label class="block font-semibold text-slate-700 dark:text-slate-200 mb-1">Reasoning / Thinking Effort</label>
+          <select id="settingReasoningEffort" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-brand-500"></select>
+          <p id="reasoningEffortHint" class="text-[11px] text-slate-400 mt-1">Higher effort spends more tokens checking multi-column math and tables.</p>
+        </div>
+
+        <!-- Custom Base URL (if custom or openrouter) -->
         <div id="customBaseUrlWrapper" class="hidden">
-          <label class="block font-medium text-slate-700 mb-1">API Base URL</label>
-          <input type="text" id="settingBaseUrl" placeholder="https://openrouter.ai/api/v1" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5">
+          <label class="block font-semibold text-slate-700 dark:text-slate-200 mb-1">Base URL</label>
+          <input type="text" id="settingBaseUrl" placeholder="https://openrouter.ai/api/v1" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-slate-800 dark:text-slate-100">
         </div>
 
+        <!-- API Key Input -->
         <div>
-          <label class="block font-medium text-slate-700 mb-1">API Key</label>
+          <label class="block font-semibold text-slate-700 dark:text-slate-200 mb-1">API Key</label>
           <div class="relative">
-            <input type="password" id="settingApiKey" placeholder="sk-..." class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 pr-10">
-            <button type="button" onclick="togglePasswordVisibility()" class="absolute right-3 top-3 text-slate-400 hover:text-slate-600">
+            <input type="password" id="settingApiKey" placeholder="sk-or-v1-..." class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 pr-10 text-slate-800 dark:text-slate-100 font-mono text-xs">
+            <button type="button" onclick="togglePasswordVisibility()" class="absolute right-3 top-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200" title="Toggle visibility">
               <i data-lucide="eye" id="eyeIcon" class="w-4 h-4"></i>
             </button>
           </div>
-          <p class="text-xs text-slate-400 mt-1">Keys are kept strictly in your browser session. Never stored on disk or server databases.</p>
+          <p class="text-[11px] text-slate-400 mt-1.5 flex items-center space-x-1">
+            <i data-lucide="lock" class="w-3 h-3 text-emerald-500"></i>
+            <span>Stored strictly in your local session. Never sent to third parties.</span>
+          </p>
         </div>
+
+        <!-- Inline Connection Status Banner -->
+        <div id="connStatusAlert" class="hidden p-3 rounded-xl text-xs font-medium"></div>
+
       </div>
 
-      <div class="flex items-center justify-between border-t pt-4">
-        <button onclick="testConnection()" id="btnTestConn" class="px-4 py-2 text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition">Test Connection</button>
-        <button onclick="saveSettings()" class="px-5 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow transition">Save & Apply</button>
+      <!-- Action Footer -->
+      <div class="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-4">
+        <button onclick="testConnection()" id="btnTestConn" class="px-3.5 py-2 text-xs font-semibold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/70 hover:bg-brand-100 dark:hover:bg-brand-900 rounded-xl transition flex items-center space-x-1.5">
+          <i data-lucide="activity" class="w-3.5 h-3.5"></i>
+          <span>Test Connection</span>
+        </button>
+        <button onclick="saveSettings()" class="px-5 py-2 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-xl shadow-sm transition active:scale-95">
+          Save & Apply
+        </button>
       </div>
+
     </div>
   </div>
+
+  <!-- HOW TO USE MODAL -->
+  <div id="howToModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4 transition-opacity" role="dialog" aria-modal="true" aria-labelledby="howToTitle">
+    <div class="glass-card bg-white dark:bg-slate-900 w-full max-w-xl rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-5 animate-in fade-in zoom-in-95 duration-150">
+      
+      <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3.5">
+        <div class="flex items-center space-x-2">
+          <div class="w-7 h-7 rounded-lg bg-brand-50 dark:bg-brand-950 text-brand-600 dark:text-brand-400 flex items-center justify-center">
+            <i data-lucide="book-open" class="w-4 h-4"></i>
+          </div>
+          <h3 id="howToTitle" class="text-base font-bold text-slate-900 dark:text-white">How to use UnderwriteIQ</h3>
+        </div>
+        <button onclick="closeHowToModal()" aria-label="Close help" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3.5 text-xs sm:text-sm text-slate-600 dark:text-slate-300">
+        
+        <div class="flex items-start space-x-3">
+          <div class="w-6 h-6 rounded-full bg-brand-100 dark:bg-brand-950 text-brand-700 dark:text-brand-300 font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">1</div>
+          <div>
+            <strong class="text-slate-800 dark:text-white block font-semibold">Connect your API Key</strong>
+            <span>Open <strong class="text-brand-600 dark:text-brand-400">API Settings</strong>, select your preferred LLM provider (OpenRouter, Claude, or OpenAI), and paste your key.</span>
+          </div>
+        </div>
+
+        <div class="flex items-start space-x-3">
+          <div class="w-6 h-6 rounded-full bg-brand-100 dark:bg-brand-950 text-brand-700 dark:text-brand-300 font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">2</div>
+          <div>
+            <strong class="text-slate-800 dark:text-white block font-semibold">Upload Financial Documents</strong>
+            <span>Drag in any bank statement, tax return, or MCA application in PDF, PNG, or JPG format. Multi-page statements are automatically processed.</span>
+          </div>
+        </div>
+
+        <div class="flex items-start space-x-3">
+          <div class="w-6 h-6 rounded-full bg-brand-100 dark:bg-brand-950 text-brand-700 dark:text-brand-300 font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">3</div>
+          <div>
+            <strong class="text-slate-800 dark:text-white block font-semibold">Run AI Extraction & Math Audit</strong>
+            <span>Click <strong class="text-brand-600 dark:text-brand-400">Extract</strong>. The engine extracts all line items and runs an exact mathematical reconciliation against the statement totals.</span>
+          </div>
+        </div>
+
+        <div class="flex items-start space-x-3">
+          <div class="w-6 h-6 rounded-full bg-brand-100 dark:bg-brand-950 text-brand-700 dark:text-brand-300 font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">4</div>
+          <div>
+            <strong class="text-slate-800 dark:text-white block font-semibold">Dual-Pane Inspection & Export</strong>
+            <span>Click <strong class="text-brand-600 dark:text-brand-400">View Data</strong> to review transactions side-by-side with the original document. Filter by MCA flags or export to CSV / JSON.</span>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="p-3 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl text-[11px] text-slate-500 dark:text-slate-400 flex items-start space-x-2">
+        <i data-lucide="info" class="w-4 h-4 text-brand-500 shrink-0 mt-0.5"></i>
+        <span>Security Note: Uploaded files and keys are processed securely in memory and in your browser's IndexedDB. Never retained in remote databases.</span>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION CONTAINER -->
+  <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col space-y-2 pointer-events-none"></div>
+
+  <!-- FOOTER -->
+  <footer class="glass-panel border-t mt-auto py-5 transition-colors duration-200">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 dark:text-slate-400 gap-3">
+      <div class="flex items-center space-x-2">
+        <div class="w-2 h-2 rounded-full bg-emerald-500"></div>
+        <span class="font-medium text-slate-700 dark:text-slate-300">UnderwriteIQ Platform</span>
+        <span>·</span>
+        <span>Built by Faysal Mehrab Chowdhury</span>
+      </div>
+      <div class="flex items-center space-x-3">
+        <a class="hover:text-brand-600 dark:hover:text-brand-400 transition" href="mailto:faysalmehrabchowdhury@gmail.com">Email</a>
+        <span>·</span>
+        <a class="hover:text-brand-600 dark:hover:text-brand-400 transition" href="https://www.linkedin.com/in/faysal-mehrab-chowdhury-a497a31b1/" target="_blank" rel="noopener noreferrer">LinkedIn</a>
+        <span>·</span>
+        <a class="hover:text-brand-600 dark:hover:text-brand-400 transition" href="https://github.com/FaysalMehrab" target="_blank" rel="noopener noreferrer">GitHub</a>
+        <span>·</span>
+        <a class="hover:text-brand-600 dark:hover:text-brand-400 transition" href="https://scholar.google.com/citations?user=4BJ2QV4AAAAJ&amp;hl=en" target="_blank" rel="noopener noreferrer">Google Scholar</a>
+      </div>
+    </div>
+  </footer>
 
   <script src="/app.js"></script>
 </body>

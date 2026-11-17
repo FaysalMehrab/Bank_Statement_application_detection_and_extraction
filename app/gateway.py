@@ -1,7 +1,8 @@
 """
 Universal BYOK LLM Gateway
 Executes requests strictly against the user-specified provider and model.
-Supports OpenAI, Anthropic, DeepSeek, OpenRouter, and custom endpoints.
+Handles model-specific input structures, reasoning parameters, token limits,
+and structured output modes across OpenAI, Anthropic, DeepSeek, OpenRouter, and custom endpoints.
 """
 
 import json
@@ -125,10 +126,11 @@ def _extract_text_from_response(resp) -> str:
 
 
 class UniversalLLMGateway:
-    def __init__(self, provider: str, api_key: str, model: str, base_url: str = None):
+    def __init__(self, provider: str, api_key: str, model: str, base_url: str = None, reasoning_effort: str = None):
         self.provider = (provider or "openai").lower().strip()
         self.api_key = (api_key or "").strip()
         self.model = (model or "").strip()
+        self.reasoning_effort = (reasoning_effort or "").lower().strip() or None
 
         # Resolve base URL cleanly
         resolved_url = base_url.strip() if base_url and base_url.strip() else None
@@ -142,6 +144,11 @@ class UniversalLLMGateway:
 
         self.base_url = resolved_url
 
+    def _is_reasoning_model(self) -> bool:
+        """Determines if the target model is an OpenAI/DeepSeek reasoning model."""
+        m = self.model.lower()
+        return any(tag in m for tag in ("o1", "o3", "o4", "reasoner", "deepseek-r1")) or bool(self.reasoning_effort and self.provider == "openai")
+
     def test_handshake(self) -> str:
         """Lightweight verification test against the user's selected model."""
         if self.provider == "anthropic":
@@ -152,7 +159,7 @@ class UniversalLLMGateway:
             }
             payload = {
                 "model": self.model,
-                "max_tokens": 5,
+                "max_tokens": 10,
                 "messages": [{"role": "user", "content": "ping"}]
             }
             with httpx.Client(timeout=30.0) as client:
@@ -162,11 +169,17 @@ class UniversalLLMGateway:
                 return "OK"
         else:
             client = self._build_openai_client()
-            client.chat.completions.create(
-                model=self.model,
-                messages=[{"role": "user", "content": "ping"}],
-                max_tokens=5,
-            )
+            kwargs = {
+                "model": self.model,
+                "messages": [{"role": "user", "content": "ping"}],
+            }
+            if self._is_reasoning_model():
+                kwargs["max_completion_tokens"] = 10
+            else:
+                kwargs["max_tokens"] = 10
+                kwargs["temperature"] = 0.0
+
+            client.chat.completions.create(**kwargs)
             return "OK"
 
     def _build_openai_client(self) -> OpenAI:
@@ -174,7 +187,7 @@ class UniversalLLMGateway:
         if self.provider == "openrouter" or (self.base_url and "openrouter" in self.base_url):
             default_headers = {
                 "HTTP-Referer": "http://localhost:8000",
-                "X-Title": "Universal Underwriting Engine",
+                "X-Title": "UnderwriteIQ Engine",
             }
 
         return OpenAI(
@@ -193,46 +206,70 @@ class UniversalLLMGateway:
 
     def _call_openai_compatible(self, system_prompt: str, user_content: list, schema: dict, schema_name: str) -> tuple[dict | list, dict]:
         client = self._build_openai_client()
+        is_reasoning = self._is_reasoning_model()
 
         openai_content = []
         for part in user_content:
             p_type = part.get("type")
-            if p_type == "input_text":
-                openai_content.append({"type": "text", "text": part["text"]})
-            elif p_type == "input_image":
+            if p_type in ("input_text", "text"):
+                openai_content.append({"type": "text", "text": part.get("text", "")})
+            elif p_type in ("input_image", "image"):
                 openai_content.append({
                     "type": "image_url",
-                    "image_url": {"url": part["image_url"], "detail": part.get("detail", "high")}
+                    "image_url": {"url": part.get("image_url", ""), "detail": part.get("detail", "high")}
                 })
 
         user_msg = openai_content[0]["text"] if (len(openai_content) == 1 and openai_content[0]["type"] == "text") else openai_content
 
+        # Handle system prompt role
+        system_role = "system"
+        if is_reasoning and ("o1-mini" in self.model.lower() or "o1-preview" in self.model.lower()):
+            system_role = "developer"
+
         messages = [
-            {"role": "system", "content": system_prompt},
+            {"role": system_role, "content": system_prompt},
             {"role": "user", "content": user_msg}
         ]
+
+        # Base kwargs
+        base_kwargs = {
+            "model": self.model,
+            "messages": messages,
+        }
+
+        # Temperature handling: reasoning models reject temperature parameter
+        if not is_reasoning:
+            base_kwargs["temperature"] = 0.0
+
+        # Effort parameter handling
+        if self.reasoning_effort:
+            if self.provider == "openai":
+                base_kwargs["reasoning_effort"] = self.reasoning_effort
+            elif self.provider == "openrouter":
+                base_kwargs["extra_body"] = {"reasoning": {"effort": self.reasoning_effort}}
+
+        # Token limit handling
+        if is_reasoning:
+            base_kwargs["max_completion_tokens"] = 16384
 
         resp = None
         parsed_data = None
         is_obj_schema = schema.get("type") == "object"
 
-        # Mode 1: Strict JSON Schema (Standard for OpenAI gpt-4o/gpt-5.6-terra, Mistral)
+        # Mode 1: Strict JSON Schema (Standard for OpenAI gpt-4o, gpt-5.6 series)
         try:
-            resp = client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                response_format={
-                    "type": "json_schema",
-                    "json_schema": {"name": schema_name, "strict": True, "schema": schema}
-                },
-                temperature=0.0,
-            )
+            mode1_kwargs = dict(base_kwargs)
+            mode1_kwargs["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": schema_name, "strict": True, "schema": schema}
+            }
+            resp = client.chat.completions.create(**mode1_kwargs)
             raw = _extract_text_from_response(resp)
             parsed_data = _find_json_in_text(raw, prefer_object=is_obj_schema)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Mode 1 json_schema failed ({e}), falling back to Mode 2...")
 
-        # Mode 2: Tool / Function Calling (Standard for models that don't support strict response_format)
+        # Mode 2: Tool / Function Calling (Standard for models that support tools)
         if not parsed_data:
             try:
                 tools = [{
@@ -243,33 +280,47 @@ class UniversalLLMGateway:
                         "parameters": schema
                     }
                 }]
-                resp = client.chat.completions.create(
-                    model=self.model,
-                    messages=messages,
-                    tools=tools,
-                    tool_choice={"type": "function", "function": {"name": schema_name}},
-                    temperature=0.0,
-                )
+                mode2_kwargs = dict(base_kwargs)
+                mode2_kwargs["tools"] = tools
+                mode2_kwargs["tool_choice"] = {"type": "function", "function": {"name": schema_name}}
+                resp = client.chat.completions.create(**mode2_kwargs)
                 raw = _extract_text_from_response(resp)
                 parsed_data = _find_json_in_text(raw, prefer_object=is_obj_schema)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Mode 2 tool_choice failed ({e}), falling back to Mode 3...")
 
-        # Mode 3: JSON Object Mode with Schema Prompt
+        # Mode 3: JSON Object Mode with Schema in prompt
         if not parsed_data:
-            schema_prompt = f"\n\nOUTPUT FORMAT SPECIFICATION:\nReturn a valid JSON object matching this schema:\n{json.dumps(schema)}"
-            retry_messages = [
-                {"role": "system", "content": system_prompt + schema_prompt},
-                {"role": "user", "content": user_msg}
-            ]
-            resp = client.chat.completions.create(
-                model=self.model,
-                messages=retry_messages,
-                response_format={"type": "json_object"},
-                temperature=0.0,
-            )
-            raw = _extract_text_from_response(resp)
-            parsed_data = _find_json_in_text(raw, prefer_object=is_obj_schema)
+            try:
+                schema_prompt = f"\n\nOUTPUT FORMAT SPECIFICATION:\nReturn ONLY a valid JSON object matching this schema:\n{json.dumps(schema)}"
+                retry_messages = [
+                    {"role": system_role, "content": system_prompt + schema_prompt},
+                    {"role": "user", "content": user_msg}
+                ]
+                mode3_kwargs = dict(base_kwargs)
+                mode3_kwargs["messages"] = retry_messages
+                mode3_kwargs["response_format"] = {"type": "json_object"}
+                resp = client.chat.completions.create(**mode3_kwargs)
+                raw = _extract_text_from_response(resp)
+                parsed_data = _find_json_in_text(raw, prefer_object=is_obj_schema)
+            except Exception as e:
+                logger.debug(f"Mode 3 json_object failed ({e}), falling back to Mode 4...")
+
+        # Mode 4: Plain text completion with prompt instruction
+        if not parsed_data:
+            try:
+                schema_prompt = f"\n\nOUTPUT FORMAT SPECIFICATION:\nReturn raw JSON matching this schema:\n{json.dumps(schema)}"
+                plain_messages = [
+                    {"role": system_role, "content": system_prompt + schema_prompt},
+                    {"role": "user", "content": user_msg}
+                ]
+                mode4_kwargs = dict(base_kwargs)
+                mode4_kwargs["messages"] = plain_messages
+                resp = client.chat.completions.create(**mode4_kwargs)
+                raw = _extract_text_from_response(resp)
+                parsed_data = _find_json_in_text(raw, prefer_object=is_obj_schema)
+            except Exception as e:
+                logger.error(f"Mode 4 text fallback failed: {e}")
 
         if not parsed_data:
             raw_preview = getattr(resp.choices[0].message, "content", "") if resp and resp.choices else "Empty response"
@@ -294,12 +345,16 @@ class UniversalLLMGateway:
         anthropic_content = []
         for part in user_content:
             p_type = part.get("type")
-            if p_type == "input_text":
-                anthropic_content.append({"type": "text", "text": part["text"]})
-            elif p_type == "input_image":
-                data_uri = part["image_url"]
-                header, b64_data = data_uri.split(",", 1)
-                media_type = header.split(";")[0].replace("data:", "")
+            if p_type in ("input_text", "text"):
+                anthropic_content.append({"type": "text", "text": part.get("text", "")})
+            elif p_type in ("input_image", "image"):
+                data_uri = part.get("image_url", "")
+                if "," in data_uri:
+                    header, b64_data = data_uri.split(",", 1)
+                    media_type = header.split(";")[0].replace("data:", "")
+                else:
+                    media_type = "image/png"
+                    b64_data = data_uri
                 anthropic_content.append({
                     "type": "image",
                     "source": {"type": "base64", "media_type": media_type, "data": b64_data}
@@ -313,16 +368,28 @@ class UniversalLLMGateway:
 
         payload = {
             "model": self.model,
-            "max_tokens": 8192,
             "system": system_prompt,
             "messages": [{"role": "user", "content": anthropic_content}],
             "tools": tools,
-            "tool_choice": {"type": "tool", "name": schema_name}
         }
+
+        # Handle Anthropic thinking / reasoning configuration
+        if self.reasoning_effort:
+            budget_map = {"low": 1024, "medium": 2048, "high": 4096, "xhigh": 8192}
+            budget = budget_map.get(self.reasoning_effort, 2048)
+            payload["thinking"] = {"type": "enabled", "budget_tokens": budget}
+            payload["max_tokens"] = budget + 8192
+            # When thinking is enabled, tool_choice cannot be forced {"type": "tool"}
+            payload["tool_choice"] = {"type": "auto"}
+        else:
+            payload["max_tokens"] = 8192
+            payload["temperature"] = 0.0
+            payload["tool_choice"] = {"type": "tool", "name": schema_name}
 
         headers = {
             "x-api-key": self.api_key,
             "anthropic-version": "2023-06-01",
+            "anthropic-beta": "output-128k-2025-02-19",
             "content-type": "application/json"
         }
 
@@ -332,13 +399,23 @@ class UniversalLLMGateway:
                 raise ValueError(f"Anthropic API Error ({resp.status_code}): {resp.text}")
             res_data = resp.json()
 
-        parsed = {}
+        parsed = None
+        is_obj_schema = schema.get("type") == "object"
+
         for content_block in res_data.get("content", []):
-            if content_block.get("type") == "tool_use" and content_block.get("name") == schema_name:
+            b_type = content_block.get("type")
+            if b_type == "tool_use" and content_block.get("name") == schema_name:
                 parsed = content_block.get("input", {})
                 break
+            elif b_type == "text":
+                text_parsed = _find_json_in_text(content_block.get("text", ""), prefer_object=is_obj_schema)
+                if text_parsed:
+                    parsed = text_parsed
 
-        if isinstance(parsed, list) and len(parsed) > 0 and isinstance(parsed[0], dict) and schema.get("type") == "object":
+        if parsed is None:
+            parsed = {}
+
+        if isinstance(parsed, list) and len(parsed) > 0 and isinstance(parsed[0], dict) and is_obj_schema:
             parsed = parsed[0]
 
         usage = res_data.get("usage", {})

@@ -17,6 +17,12 @@ CLASSIFICATION_SCHEMA = {
             ],
             "description": "Detected category of the document",
         },
+        "is_bank_statement": {"type": ["boolean", "null"], "description": "Set true if bank statement, account activity, or banking screen"},
+        "is_application_form": {"type": ["boolean", "null"], "description": "Set true if commercial funding application"},
+        "is_driving_licence": {"type": ["boolean", "null"], "description": "Set true if driver license or state ID"},
+        "is_voided_check": {"type": ["boolean", "null"], "description": "Set true if voided check or direct deposit form"},
+        "is_mtb": {"type": ["boolean", "null"], "description": "Deprecated, set false"},
+        "is_other_document": {"type": ["boolean", "null"], "description": "Set true only if none of the above match"},
         "business_information": {
             "type": ["object", "null"],
             "description": "Business information, null if category is not application_form",
@@ -69,7 +75,11 @@ CLASSIFICATION_SCHEMA = {
             },
         },
     },
-    "required": ["category", "business_information", "funding_request", "owners"],
+    "required": [
+        "category", "is_bank_statement", "is_application_form", "is_driving_licence",
+        "is_voided_check", "is_mtb", "is_other_document",
+        "business_information", "funding_request", "owners"
+    ],
     "additionalProperties": False,
 }
 
@@ -122,8 +132,8 @@ SUMMARY_SCHEMA = {
         "accountHolderState": {"type": ["string", "null"]},
         "accountHolderZip": {"type": ["string", "null"]},
         "accountNumber": {"type": "string"},
-        "startdate": {"type": "string", "pattern": r"^\d{4}-\d{2}-\d{2}$"},
-        "enddate": {"type": "string", "pattern": r"^\d{4}-\d{2}-\d{2}$"},
+        "startdate": {"type": ["string", "null"], "description": "Start date YYYY-MM-DD"},
+        "enddate": {"type": ["string", "null"], "description": "End date YYYY-MM-DD"},
         "beginningBalance": {"type": ["number", "null"]},
         "endingBalance": {"type": ["number", "null"]},
         "avgDailyBalance": {"type": ["number", "null"]},
@@ -152,7 +162,7 @@ BATCH_TRANSACTIONS_SCHEMA = {
             "items": {
                 "type": "object",
                 "properties": {
-                    "postingDate": {"type": "string", "pattern": r"^\d{4}-\d{2}-\d{2}$"},
+                    "postingDate": {"type": ["string", "null"], "description": "Date in YYYY-MM-DD"},
                     "description": {"type": "string", "minLength": 1},
                     "amount": {"type": "number"},
                     "type": {"type": "string", "enum": ["credit", "debit", "returned_item"]},
@@ -177,8 +187,8 @@ V4_METADATA_SCHEMA = {
         "accountHolderState": {"type": ["string", "null"]},
         "accountHolderZip": {"type": ["string", "null"]},
         "primaryAccountNumber": {"type": "string"},
-        "startdate": {"type": "string", "pattern": r"^\d{4}-\d{2}-\d{2}$"},
-        "enddate": {"type": "string", "pattern": r"^\d{4}-\d{2}-\d{2}$"},
+        "startdate": {"type": ["string", "null"]},
+        "enddate": {"type": ["string", "null"]},
         "avgDailyBalance": {"type": ["number", "null"]},
         "avgLedgerBalance": {"type": ["number", "null"]},
     },
@@ -223,7 +233,7 @@ V4_BATCH_SCHEMA = {
                 "type": "object",
                 "properties": {
                     "accountNumber": {"type": "string"},
-                    "postingDate": {"type": "string", "pattern": r"^\d{4}-\d{2}-\d{2}$"},
+                    "postingDate": {"type": ["string", "null"]},
                     "description": {"type": "string", "minLength": 1},
                     "amount": {"type": "number"},
                     "type": {"type": "string", "enum": ["credit", "debit", "returned_item"]},

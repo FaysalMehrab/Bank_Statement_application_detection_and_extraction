@@ -50,10 +50,11 @@ def test_connection(
     x_provider: str = Header(...),
     x_api_key: str = Header(...),
     x_model: str = Header(...),
-    x_base_url: str = Header(None)
+    x_base_url: str = Header(None),
+    x_reasoning_effort: str = Header(None)
 ):
     try:
-        gateway = UniversalLLMGateway(x_provider, x_api_key, x_model, x_base_url)
+        gateway = UniversalLLMGateway(x_provider, x_api_key, x_model, x_base_url, x_reasoning_effort)
         gateway.test_handshake()
         return {"status": "ok", "message": f"Successfully connected to {x_model} ({x_provider})!"}
     except Exception as e:
@@ -88,7 +89,8 @@ async def extract_document(
     x_provider: str = Header(...),
     x_api_key: str = Header(...),
     x_model: str = Header(...),
-    x_base_url: str = Header(None)
+    x_base_url: str = Header(None),
+    x_reasoning_effort: str = Header(None)
 ):
     PROGRESS_STREAMS[job_id] = {"msg": "Initializing extraction...", "pct": 5, "done": False}
 
@@ -102,10 +104,13 @@ async def extract_document(
         with open(file_path, "wb") as f:
             shutil.copyfileobj(file.file, f)
 
-        def progress_cb(msg, pct):
-            PROGRESS_STREAMS[job_id] = {"msg": msg, "pct": pct, "done": False}
+        def progress_cb(msg, pct, meta=None):
+            data = {"msg": msg, "pct": pct, "done": False}
+            if meta and isinstance(meta, dict):
+                data.update(meta)
+            PROGRESS_STREAMS[job_id] = data
 
-        gateway = UniversalLLMGateway(x_provider, x_api_key, x_model, x_base_url)
+        gateway = UniversalLLMGateway(x_provider, x_api_key, x_model, x_base_url, x_reasoning_effort)
         orchestrator = PipelineOrchestrator(gateway, progress_callback=progress_cb)
 
         result = await asyncio.to_thread(orchestrator.run, file_path)
