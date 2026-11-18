@@ -1,67 +1,91 @@
-# Universal Statement & Financial Document Underwriting Engine
+# UnderwriteIQ — Universal Financial Document Underwriting Engine
 
-The solution unites four research scripts into an end-to-end processing pipeline, incorporates a Bring-Your-Own-Key (BYOK) Universal LLM Gateway, and provides a responsive single-page application with date grouping, search, a full scrollable PDF preview, reconciliation badges, transaction exports, and underwriting risk review.
+Upload bank statements, funding applications, driver licences and voided checks. The engine classifies each document, extracts structured data with an LLM of your choice (bring your own API key), reconciles statement math, and flags MCA, loan, credit-card, BNPL and returned-item activity for underwriting review.
 
-## Document privacy and persistence
+## Features
 
-Uploaded originals and extraction results are kept in the browser on the device that uploaded them. Source files use IndexedDB; extraction results use local storage. This makes previews and original-file downloads survive page refreshes without storing customer documents on the Render server.
+- **Automatic triage:** each upload is classified as a bank statement, funding application, driver licence / ID, voided check or other. Single- vs multi-account statements are detected and shown on the document card as soon as they are known.
+- **Bank statements:**
+  - Micro-batched transaction extraction (text for digital PDFs, vision for scans and images).
+  - Reconciliation audit: beginning balance + deposits − withdrawals = ending balance, plus deposit and withdrawal tie-outs.
+  - **Partial-statement warning** when transactions cover 70% or less of the statement period.
+  - MCA & Underwriting tab with collapsible groups (MCA, business loans, credit cards, BNPL, returned/NSF).
+- **Applications, IDs and checks:** a dedicated details view instead of the statement interface. Applications get a completeness check, ownership summary and masked SSNs. IDs get an expiry badge. Checks show account and routing details.
+- **Split viewer:** source document (PDF.js or image) next to the extracted data, with CSV and JSON export.
+- **Account selector:** extracted accounts and holders are listed in a dropdown that filters the library.
+- **BYOK gateway:** OpenAI, Anthropic, OpenRouter or any OpenAI-compatible endpoint.
 
-Browser storage is not shared across devices or browsers. Add object storage (for example, S3 or Cloudflare R2) before introducing a shared server-side document library.
+## Privacy
+
+- Your API key lives in the browser's `sessionStorage` and is sent only with your own requests. Never put a key in Render environment variables.
+- Uploaded originals are kept in the browser (IndexedDB) and extraction results in `localStorage`. The server processes each file in a temporary folder and deletes it immediately; nothing is stored server-side.
+- Browser storage is per device and browser. Add object storage (S3, Cloudflare R2) before introducing a shared server-side library.
 
 ## Project structure
 
 ```text
-statement_extractor_webapp/
-├── requirements.txt
 ├── Dockerfile
-├── README.md
+├── render.yaml            # Render Blueprint (free Docker web service)
+├── requirements.txt       # pinned dependencies
 ├── app/
-│   ├── __init__.py
-│   ├── config.py
-│   ├── schemas.py
-│   ├── prompts.py
-│   ├── gateway.py
-│   ├── pipeline.py
-│   └── main.py
-└── static/
-    ├── index.html
-    └── app.js
-```
-
-## Install dependencies
-
-Activate your Python virtual environment, then run:
-
-```bash
-pip install -r requirements.txt
+│   ├── main.py            # FastAPI server, SSE progress, static hosting
+│   ├── gateway.py         # Universal LLM gateway
+│   ├── pipeline.py        # Triage → topology → extraction → audit → underwriting
+│   ├── prompts.py         # Detection & extraction prompts
+│   ├── schemas.py         # Structured-output JSON schemas
+│   └── config.py          # Providers, models, pricing
+├── static/
+│   ├── index.html
+│   ├── app.js
+│   └── vendor/            # Self-hosted PDF.js (no CDN dependency for previews)
+└── root_files/            # Original research scripts (not deployed)
 ```
 
 ## Run locally
 
 ```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
-Open http://localhost:8000 in your browser.
+Open http://localhost:8000, click the settings button, choose a provider and model, paste your API key and test the connection.
 
-## Deploy to Render via GitHub
+Or with Docker:
 
-1. Push the project to a GitHub repository:
+```bash
+docker build -t underwriteiq . && docker run -p 8000:8000 underwriteiq
+```
+
+## Deploy to Render (free)
+
+1. Push to GitHub:
 
    ```bash
-   git init
-   git add .
-   git commit -m "Initial commit: Universal Underwriting Web Engine"
-   git branch -M main
-   git remote add origin https://github.com/<your-username>/<your-repo-name>.git
+   git remote add origin https://github.com/<your-username>/<your-repo>.git
    git push -u origin main
    ```
 
-2. Go to Render.com and create an account.
-3. Select **New + > Web Service**.
-4. Choose **Build and deploy from a Git repository** and connect your GitHub repository.
-5. Choose the Docker runtime; Render uses the included Dockerfile and automatically respects Render's `PORT` environment variable.
-6. Optionally set `CORS_ALLOWED_ORIGINS` to your deployed service URL if you host the frontend separately. It is not required for this same-origin deployment.
-7. Select an instance type and deploy. The health check endpoint is `/api/health`.
+2. In Render choose **New + → Blueprint**, connect the repo and apply. Render reads `render.yaml` (Docker runtime, free plan, health check `/api/health`).
+   Alternatively choose **New + → Web Service**, pick the repo, select **Docker** and the **Free** instance type, and set the health check path to `/api/health`.
+3. No environment variables are required. `PORT` is provided by Render. Set `CORS_ALLOWED_ORIGINS` only if you serve the frontend from a different domain.
+4. Open the service URL, add your API key in settings and upload a document.
 
-The original source describes selecting the Free instance type. Availability and pricing may change; check Render's current plan details before deployment.
+### Free-tier notes
+
+- The service sleeps after about 15 minutes without traffic; the next request takes roughly 30–60 seconds to wake it.
+- The instance has 512 MB of RAM. Typical statements are fine; very long scanned PDFs (dozens of pages) render page images and may run out of memory. Split those first.
+- Extractions run for the length of the request, with live progress over server-sent events. Render's proxy allows long requests, but a sleeping or restarting instance will interrupt one in progress; use **Extract Again**.
+- Sample or customer PDFs are git-ignored (`*.pdf`). Keep it that way before pushing.
+
+## API
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/health` | Health check |
+| `GET /api/providers` | Provider and model registry |
+| `POST /api/test-connection` | Validate provider, key and model |
+| `POST /api/extract` | Upload and process a document |
+| `GET /api/progress/{job_id}` | SSE progress stream |
+
+Provider credentials are passed per request in `x-provider`, `x-api-key`, `x-model`, `x-base-url` and `x-reasoning-effort` headers. Always use the HTTPS URL Render provides.
