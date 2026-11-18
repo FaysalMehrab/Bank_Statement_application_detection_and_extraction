@@ -1250,8 +1250,10 @@ function viewExtractedData(docId) {
     return;
   }
   setViewerMode("bank");
+  txnSort.key = null; txnSort.dir = 1;
+  window.setCurrentFlags?.(res);
   const subEl = document.getElementById("modalDocSubtitle");
-  if (subEl) subEl.textContent = "Dual-pane underwriting inspector";
+  if (subEl) subEl.textContent = ["Dual-pane underwriting inspector", window.usageLabel?.(res)].filter(Boolean).join(" · ");
 
   // Tab 1: KPIs
   document.getElementById("kpiBegBal").textContent = money(data.beginningBalance);
@@ -1309,6 +1311,7 @@ function viewExtractedData(docId) {
     () => renderAuditTab(res.reconciliation, data),
     () => renderTransactionsGrid(txns),
     () => renderMcaTab(res.underwriting || {}),
+    () => window.renderCharts?.(doc),
   ].forEach((fn) => { try { fn(); } catch (e) { console.error("Viewer render error:", e); } });
   loadDocPreview(doc.fileObject);
   if (window.lucide) lucide.createIcons();
@@ -1375,11 +1378,27 @@ function renderTransactionsGrid(txns) {
     const isCredit = Number(tx.amount) > 0 || tx.type === "credit";
     const isDebit = Number(tx.amount) < 0 || tx.type === "debit";
     const isReturned = tx.type === "returned_item";
+    const flag = window.getFlag?.(tx.trID);
 
+    if (filter === "flagged") return matchText && Boolean(flag && flag.key !== "returned");
+    if (filter === "mca") return matchText && flag?.key === "mca";
+    if (filter === "large") return matchText && Math.abs(Number(tx.amount)) >= 5000;
     if (filter === "credit") return matchText && isCredit;
     if (filter === "debit") return matchText && isDebit;
     if (filter === "returned") return matchText && isReturned;
     return matchText;
+  });
+
+  if (txnSort.key) {
+    const k = txnSort.key;
+    filtered.sort((a, b) => {
+      const av = k === "postingDate" ? (a[k] || "") : (Number(a[k]) || 0);
+      const bv = k === "postingDate" ? (b[k] || "") : (Number(b[k]) || 0);
+      return (av > bv ? 1 : av < bv ? -1 : 0) * txnSort.dir;
+    });
+  }
+  document.querySelectorAll("[data-ind]").forEach((el) => {
+    el.textContent = el.dataset.ind === txnSort.key ? (txnSort.dir === 1 ? "▲" : "▼") : "";
   });
 
   if (summaryEl) {
@@ -1398,10 +1417,12 @@ function renderTransactionsGrid(txns) {
     tr.className = "hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer transition-colors";
     tr.dataset.transactionId = tx.trID || "";
     tr.onclick = () => focusTransaction(tx.trID);
+    const flag = window.getFlag?.(tx.trID);
+    if (flag) tr.style.boxShadow = `inset 3px 0 0 ${flag.hex}`;
     tr.innerHTML = `
       <td class="py-2.5 px-3 text-slate-400 font-mono text-[11px]">${tx.trID}</td>
       <td class="py-2.5 px-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">${tx.postingDate || "N/A"}</td>
-      <td class="py-2.5 px-4 text-slate-800 dark:text-slate-100 font-sans truncate max-w-xs" title="${tx.description}">${tx.description}</td>
+      <td class="py-2.5 px-4 text-slate-800 dark:text-slate-100 font-sans truncate max-w-xs" title="${escapeHtml(tx.description)}">${escapeHtml(tx.description)}${flag ? ` <span class="ml-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase align-middle" style="background:${flag.hex}22;color:${flag.hex}">${escapeHtml(flag.short)}</span>` : ""}</td>
       <td class="py-2.5 px-3 text-right font-bold whitespace-nowrap ${isPositive ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}">${signedMoney(tx.amount, isPositive)}</td>
       <td class="py-2.5 px-3 whitespace-nowrap"><span class="px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${
         isReturned ? "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300" : isPositive ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300" : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
@@ -1410,6 +1431,14 @@ function renderTransactionsGrid(txns) {
     `;
     tbody.appendChild(tr);
   });
+}
+
+const txnSort = { key: null, dir: 1 };
+
+function sortTransactions(key) {
+  if (txnSort.key === key) txnSort.dir = -txnSort.dir;
+  else { txnSort.key = key; txnSort.dir = 1; }
+  filterTransactionsGrid();
 }
 
 function filterTransactionsGrid() {
@@ -1843,7 +1872,7 @@ function openEntityViewer(doc) {
     badgeEl.textContent = meta.label;
   }
   const sub = document.getElementById("modalDocSubtitle");
-  if (sub) sub.textContent = entityHeadline(res) || "Extracted document details";
+  if (sub) sub.textContent = [entityHeadline(res) || "Extracted document details", window.usageLabel?.(res)].filter(Boolean).join(" · ");
 
   const body = document.getElementById("tabContent-entity");
   try {

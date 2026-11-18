@@ -12,6 +12,8 @@ Upload bank statements, funding applications, driver licences and voided checks.
   - MCA & Underwriting tab with collapsible groups (MCA, business loans, credit cards, BNPL, returned/NSF).
 - **Applications, IDs and checks:** a dedicated details view instead of the statement interface. Applications get a completeness check, ownership summary and masked SSNs. IDs get an expiry badge. Checks show account and routing details.
 - **Split viewer:** source document (PDF.js or image) next to the extracted data, with CSV and JSON export.
+- **Insights:** monthly deposit/withdrawal bars, running-balance line and debt-category donut per statement; a cross-statement **Portfolio Insights** view (avg monthly deposits, lowest balance, debt burden %, NSF count, detected lenders); flagged transactions highlighted and filterable in the grid with sortable columns.
+- **Productivity:** Ctrl/Cmd+K command palette, one-page printable underwriting summary, per-document token and cost badge.
 - **Account selector:** extracted accounts and holders are listed in a dropdown that filters the library.
 - **BYOK gateway:** OpenAI, Anthropic, OpenRouter or any OpenAI-compatible endpoint.
 
