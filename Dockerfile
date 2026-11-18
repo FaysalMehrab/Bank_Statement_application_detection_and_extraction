@@ -1,21 +1,17 @@
 FROM python:3.11-slim
 
-# Install system dependencies including poppler-utils for PDF image rendering
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    poppler-utils \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
 
-# Install Python requirements
+# PyMuPDF ships its own wheels; no poppler or compiler needed.
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install -r requirements.txt
 
-# Copy application files and frontend
 COPY app/ app/
 COPY static/ static/
 
 EXPOSE 8000
 
+# Render injects $PORT. Single worker keeps memory low on the free tier.
 CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

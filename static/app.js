@@ -6,7 +6,7 @@
 // Configure PDF.js worker
 if (window.pdfjsLib) {
   pdfjsLib.GlobalWorkerOptions.workerSrc =
-    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 }
 
 // Global Application State
@@ -14,7 +14,7 @@ let providersRegistry = {};
 let documentsStore = [];
 let currentViewingDoc = null;
 let currentPdf = null;
-let pdfZoom = 1.15;
+let pdfZoom = 1.0;
 let previewObjectUrl = null;
 let activeEventSources = {};
 let selectedAccountFilter = "all";
@@ -397,6 +397,9 @@ function saveStoredDocuments() {
       size: d.size,
       uploadDate: d.uploadDate,
       status: d.status,
+      category: d.category,
+      isConsolidated: d.isConsolidated,
+      topology: d.topology,
       result: d.result,
       warningReason: d.warningReason,
     }));
@@ -963,7 +966,10 @@ async function triggerExtraction(docId) {
         const state = JSON.parse(event.data);
         if (state.pct !== undefined) doc.progressPct = state.pct;
         if (state.msg) doc.progressMsg = state.msg;
-        
+        if (state.category) { doc.category = state.category; doc.documentType = state.category; }
+        if (state.isConsolidated !== undefined) doc.isConsolidated = state.isConsolidated;
+        if (state.topology) doc.topology = state.topology;
+
         // Re-render row with animated progress bar
         const row = document.getElementById(`doc-row-${docId}`);
         if (row) {
@@ -1006,6 +1012,8 @@ async function triggerExtraction(docId) {
 
     const r = payload.result;
     doc.result = r;
+    doc.category = r.documentType || doc.category;
+    if (r.isConsolidated !== undefined) doc.isConsolidated = r.isConsolidated;
     if (r.status === "other_no_info") {
       doc.status = "failed";
       doc.warningReason = r.message || "Document not recognized as actionable financial statement.";
@@ -1245,13 +1253,16 @@ function viewExtractedData(docId) {
     }
   }
 
-  renderAuditTab(res.reconciliation, data);
-  renderTransactionsGrid(txns);
-  renderMcaTab(res.underwriting || {});
-  loadDocPreview(doc.fileObject);
-
   switchTab("summary");
   document.getElementById("dataViewerModal").classList.remove("hidden");
+
+  // Each section is isolated so one failure can never block the PDF preview.
+  [
+    () => renderAuditTab(res.reconciliation, data),
+    () => renderTransactionsGrid(txns),
+    () => renderMcaTab(res.underwriting || {}),
+  ].forEach((fn) => { try { fn(); } catch (e) { console.error("Viewer render error:", e); } });
+  loadDocPreview(doc.fileObject);
   if (window.lucide) lucide.createIcons();
 }
 
@@ -1358,60 +1369,88 @@ function filterTransactionsGrid() {
   renderTransactionsGrid(txns);
 }
 
-function renderMcaTab(uw) {
-  document.getElementById("mcaCount").textContent = uw.mca_count || 0;
-  document.getElementById("loanCount").textContent = uw.loan_count || 0;
-  document.getElementById("nsfCount").textContent = uw.returned_count || 0;
+const MCA_CATEGORIES = [
+  { key: "mca", label: "MCA Positions", test: (t) => t.isMca, name: (t) => t.lenderName, color: "amber", icon: "alert-octagon" },
+  { key: "loan", label: "Business Loans", test: (t) => t.isBusinessLoan && !t.isMca, name: (t) => t.loanLenderName, color: "indigo", icon: "banknote" },
+  { key: "cc", label: "Credit Cards", test: (t) => t.isCreditCard && !t.isMca && !t.isBusinessLoan, name: (t) => t.creditorName, color: "blue", icon: "credit-card" },
+  { key: "bnpl", label: "BNPL (Buy Now, Pay Later)", test: (t) => t.isBnpl && !t.isMca && !t.isBusinessLoan && !t.isCreditCard, name: (t) => t.bnplProvider, color: "teal", icon: "shopping-bag" },
+  { key: "returned", label: "Returned / NSF Items", test: (t) => t.isReturnedItem, name: () => null, color: "rose", icon: "undo-2" },
+];
 
-  const container = document.getElementById("mcaDetailsList");
+function renderMcaTab(uw) {
+  const analyzed = (uw.analyzed_transactions || []).filter((t) => t && typeof t === "object");
+  const txMap = new Map((currentViewingDoc?.result?.extractedData?.transactions || []).map((tx) => [tx.trID, tx]));
+  const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+
+  const groups = MCA_CATEGORIES.map((cat) => ({ cat, items: analyzed.filter(cat.test) }));
+  const count = (key) => groups.find((g) => g.cat.key === key).items.length;
+  setText("mcaCount", count("mca"));
+  setText("ccCount", count("cc"));
+  setText("loanCount", count("loan") + count("bnpl"));
+  setText("nsfCount", count("returned"));
+
+  const container = document.getElementById("mcaCategoriesAccordion");
+  if (!container) return;
   container.innerHTML = "";
 
-  const matchingTransactions = currentViewingDoc?.result?.extractedData?.transactions || [];
-  const items = (uw.analyzed_transactions || []).filter(
-    (t) => t.isMca || t.isBusinessLoan || t.isCreditCard || t.isBnpl || t.isReturnedItem
-  );
-
-  if (!items.length) {
+  const visible = groups.filter((g) => g.items.length);
+  if (!visible.length) {
     container.innerHTML = `
-      <div class="rounded-2xl border border-dashed border-slate-300 dark:border-slate-800 p-8 text-center text-xs text-slate-500 dark:text-slate-400 bg-slate-50/50 dark:bg-slate-850">
+      <div class="rounded-2xl border border-dashed border-slate-300 dark:border-slate-800 p-8 text-center text-xs text-slate-500 dark:text-slate-400">
         <i data-lucide="shield-check" class="w-8 h-8 text-emerald-500 mx-auto mb-2"></i>
         <p class="font-semibold text-slate-700 dark:text-slate-200">Clean Underwriting Profile</p>
-        <p class="text-[11px] mt-0.5">No predatory MCAs, stacked loans, or returned NSF items were detected in this statement.</p>
+        <p class="text-[11px] mt-0.5">No MCAs, loans, credit cards, BNPL or returned items were detected in this statement.</p>
       </div>`;
     if (window.lucide) lucide.createIcons();
     return;
   }
 
-  items.forEach((item) => {
-    const transaction = matchingTransactions.find((tx) => tx.trID === item.trID) || {};
-    const kind = item.isMca ? "MCA Position" : item.isBusinessLoan ? "Business Loan" : item.isCreditCard ? "Credit Card" : item.isBnpl ? "BNPL" : "Returned NSF Item";
-    const badgeColor = item.isMca ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300" : item.isReturnedItem ? "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300" : "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300";
-    
-    const card = document.createElement("div");
-    card.className = "p-4 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-850 text-xs shadow-sm hover:border-brand-300 dark:hover:border-brand-700 transition";
-    card.innerHTML = `
-      <div class="flex items-start justify-between gap-3">
-        <div class="min-w-0">
-          <div class="flex flex-wrap items-center gap-2">
-            <span class="font-bold text-slate-900 dark:text-white text-sm">${item.lenderName || item.loanLenderName || item.creditorName || item.bnplProvider || "Classified Risk Signal"}</span>
-            <span class="px-2 py-0.5 rounded text-[10px] font-semibold ${badgeColor}">${kind}</span>
-          </div>
-          <p class="mt-1 text-slate-500 dark:text-slate-400 truncate" title="${transaction.description || ""}">${transaction.description || item.trCategory || "Classified debit transaction"}</p>
+  visible.forEach(({ cat, items }) => {
+    const total = items.reduce((sum, it) => sum + Math.abs(Number(txMap.get(it.trID)?.amount) || 0), 0);
+    const details = document.createElement("details");
+    details.className = "mca-accordion group rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 overflow-hidden";
+    details.innerHTML = `
+      <summary class="flex items-center justify-between gap-3 px-4 py-3 cursor-pointer select-none hover:bg-slate-50 dark:hover:bg-slate-800/60 list-none">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <i data-lucide="chevron-right" class="w-4 h-4 text-slate-400 transition-transform group-open:rotate-90"></i>
+          <i data-lucide="${cat.icon}" class="w-4 h-4 text-${cat.color}-500"></i>
+          <span class="font-bold text-sm text-slate-800 dark:text-slate-100 truncate">${cat.label}</span>
+          <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-${cat.color}-100 text-${cat.color}-800 dark:bg-${cat.color}-950 dark:text-${cat.color}-300">${items.length}</span>
         </div>
-        <button class="shrink-0 text-brand-600 dark:text-brand-400 hover:underline font-semibold flex items-center space-x-1" onclick="focusTransaction('${item.trID}')">
-          <span>View in Grid</span>
-          <i data-lucide="arrow-right" class="w-3 h-3"></i>
-        </button>
-      </div>
-      <div class="mt-3 flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-2 text-slate-500 dark:text-slate-400 text-[11px]">
-        <span>Posting Date: ${transaction.postingDate || "N/A"} · ID: ${item.trID}</span>
-        <span class="font-mono font-bold ${Number(transaction.amount) < 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}">${transaction.amount === undefined ? "" : signedMoney(transaction.amount)}</span>
-      </div>
-    `;
-    container.appendChild(card);
+        <span class="font-mono text-xs font-semibold text-slate-500 dark:text-slate-400 shrink-0">${money(total)}</span>
+      </summary>
+      <div class="divide-y divide-slate-100 dark:divide-slate-800 border-t border-slate-100 dark:border-slate-800"></div>`;
+    const body = details.querySelector("div.divide-y");
+
+    items.forEach((item) => {
+      const tx = txMap.get(item.trID) || {};
+      const credit = tx.type === "credit";
+      const row = document.createElement("div");
+      row.className = "px-4 py-2.5 flex items-center justify-between gap-3 text-xs hover:bg-slate-50 dark:hover:bg-slate-800/40";
+      row.innerHTML = `
+        <div class="min-w-0">
+          <div class="font-semibold text-slate-800 dark:text-slate-100 truncate">${escapeHtml(cat.name(item) || item.lenderName || item.creditorName || item.loanLenderName || item.bnplProvider || "Unidentified")}</div>
+          <div class="text-slate-500 dark:text-slate-400 truncate" title="${escapeHtml(tx.description || "")}">${escapeHtml(tx.description || item.trCategory || "")}</div>
+          <div class="text-[10px] text-slate-400 mt-0.5">${escapeHtml(tx.postingDate || "N/A")} · ${escapeHtml(item.trID)}</div>
+        </div>
+        <div class="flex items-center gap-3 shrink-0">
+          <span class="font-mono font-bold ${credit ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}">${tx.amount === undefined ? "" : signedMoney(tx.amount, credit)}</span>
+          <button class="text-brand-600 dark:text-brand-400 hover:underline font-semibold" onclick="focusTransaction('${escapeHtml(item.trID)}')">Grid</button>
+        </div>`;
+      body.appendChild(row);
+    });
+    container.appendChild(details);
   });
 
   if (window.lucide) lucide.createIcons();
+}
+
+function toggleAllMcaAccordions(open) {
+  document.querySelectorAll("#mcaCategoriesAccordion details").forEach((d) => { d.open = open; });
+}
+
+function escapeHtml(v) {
+  return String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
 function focusTransaction(trID) {
@@ -1459,7 +1498,7 @@ async function loadDocPreview(file) {
     return;
   }
 
-  if (file.type && file.type.includes("pdf")) {
+  if ((file.type && file.type.includes("pdf")) || (file.name || currentViewingDoc?.name || "").toLowerCase().endsWith(".pdf")) {
     imgEl.classList.add("hidden");
     try {
       const arrayBuffer = await file.arrayBuffer();
@@ -1486,10 +1525,15 @@ async function renderAllPdfPages() {
   
   for (let number = 1; number <= currentPdf.numPages; number += 1) {
     const page = await currentPdf.getPage(number);
-    const viewport = page.getViewport({ scale: pdfZoom });
+    // Fit page width to the pane, then apply the user's zoom factor
+    const container = document.getElementById("pdfViewerContainer");
+    const avail = Math.max(240, (container?.clientWidth || 600) - 28);
+    const base = page.getViewport({ scale: 1 });
+    const scale = (avail / base.width) * pdfZoom;
+    const viewport = page.getViewport({ scale });
     const wrapper = document.createElement("section");
     wrapper.id = `pdf-page-${number}`;
-    wrapper.className = "relative rounded-lg bg-white p-1 shadow-2xl overflow-hidden";
+    wrapper.className = "relative rounded-lg bg-white p-1 shadow-2xl shrink-0";
     
     const label = document.createElement("span");
     label.className = "absolute right-2 top-2 rounded bg-slate-900/80 backdrop-blur-sm px-2 py-0.5 text-[10px] text-white font-mono";

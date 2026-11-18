@@ -58,3 +58,6 @@ Desktop.ini
 
 # Local tooling
 .codex/
+
+# Sample/customer documents
+*.pdf

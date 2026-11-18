@@ -35,6 +35,14 @@ app.add_middleware(
 PROGRESS_STREAMS = {}
 
 
+def _schedule_progress_cleanup(job_id: str, delay: float = 60.0):
+    """Drop finished progress entries so the in-memory dict can't grow forever."""
+    try:
+        asyncio.get_running_loop().call_later(delay, PROGRESS_STREAMS.pop, job_id, None)
+    except RuntimeError:
+        PROGRESS_STREAMS.pop(job_id, None)
+
+
 @app.get("/api/health")
 def health_check():
     return {"status": "ok"}
@@ -69,7 +77,12 @@ def test_connection(
 async def get_progress(job_id: str):
     async def event_generator():
         last_pct = -1
+        waited = 0.0
         while True:
+            if job_id not in PROGRESS_STREAMS:
+                waited += 0.3
+                if waited > 120:
+                    break
             if job_id in PROGRESS_STREAMS:
                 state = PROGRESS_STREAMS[job_id]
                 if state.get("pct") != last_pct or state.get("done"):
@@ -94,10 +107,11 @@ async def extract_document(
 ):
     PROGRESS_STREAMS[job_id] = {"msg": "Initializing extraction...", "pct": 5, "done": False}
 
-    temp_dir = tempfile.mkdtemp(prefix="stmt_")
     suffix = Path(file.filename or "document").suffix.lower()
     if suffix not in {".pdf", ".png", ".jpg", ".jpeg"}:
+        PROGRESS_STREAMS.pop(job_id, None)
         raise HTTPException(status_code=400, detail="Only PDF, PNG, and JPG files are supported.")
+    temp_dir = tempfile.mkdtemp(prefix="stmt_")
     file_path = os.path.join(temp_dir, f"upload{suffix}")
 
     try:
@@ -116,11 +130,13 @@ async def extract_document(
         result = await asyncio.to_thread(orchestrator.run, file_path)
 
         PROGRESS_STREAMS[job_id] = {"msg": "Complete!", "pct": 100, "done": True}
+        _schedule_progress_cleanup(job_id)
         return JSONResponse(content={"status": "success", "result": result})
 
     except Exception as e:
         logger.exception("Extraction failed")
         PROGRESS_STREAMS[job_id] = {"msg": f"Failed: {str(e)}", "pct": 100, "done": True, "error": True}
+        _schedule_progress_cleanup(job_id)
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
     finally:

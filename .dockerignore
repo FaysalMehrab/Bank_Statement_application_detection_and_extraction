@@ -1,0 +1,7 @@
+bank_env/
+.git/
+__pycache__/
+*.pyc
+.env
+root_files/
+*.pdf
