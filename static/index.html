@@ -54,7 +54,7 @@
   <script src="https://unpkg.com/lucide@0.468.0"></script>
   
   <!-- PDF.js for dual-pane high-fidelity viewer -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="/vendor/pdf.min.js"></script>
 
   <style>
     /* Sleek background mesh gradients */
@@ -320,7 +320,7 @@
       <!-- Search Input -->
       <div class="relative flex-1 max-w-md">
         <i data-lucide="search" class="w-4 h-4 absolute left-3.5 top-3 text-slate-400"></i>
-        <input type="text" id="searchInput" oninput="renderDocumentTree()" placeholder="Search by filename, bank, or holder name..." class="w-full pl-9 pr-9 py-2 text-sm bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 shadow-sm transition">
+        <input type="search" name="doc-library-search" autocomplete="off" autocapitalize="off" spellcheck="false" id="searchInput" oninput="renderDocumentTree()" placeholder="Search by filename, bank, or holder name..." class="w-full pl-9 pr-9 py-2 text-sm bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 shadow-sm transition">
         <button id="clearSearchBtn" onclick="document.getElementById('searchInput').value=''; renderDocumentTree();" class="hidden absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
           <i data-lucide="x" class="w-4 h-4"></i>
         </button>
@@ -378,7 +378,7 @@
             <span class="hidden sm:inline">Original File</span>
           </button>
           
-          <button onclick="downloadCsvExport()" class="px-2.5 sm:px-3 py-1.5 text-xs bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg flex items-center space-x-1.5 font-medium transition border border-slate-200 dark:border-slate-700" title="Export transactions to CSV">
+          <button id="exportCsvBtn" onclick="downloadCsvExport()" class="px-2.5 sm:px-3 py-1.5 text-xs bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg flex items-center space-x-1.5 font-medium transition border border-slate-200 dark:border-slate-700" title="Export transactions to CSV">
             <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5 text-emerald-600"></i>
             <span class="hidden sm:inline">Export CSV</span>
           </button>
@@ -456,7 +456,15 @@
               <span id="tabMcaCountBadge" class="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 font-bold hidden">0</span>
             </button>
 
+            <button onclick="switchTab('entity')" id="tabBtn-entity" class="tab-btn pb-3 border-b-2 border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hidden items-center space-x-2 transition">
+              <i data-lucide="file-text" class="w-4 h-4"></i>
+              <span id="entityTabLabel">Extracted Details</span>
+            </button>
+
           </div>
+
+          <!-- TAB: NON-BANK DOCUMENT DETAILS -->
+          <div id="tabContent-entity" class="flex-1 overflow-auto min-h-0 min-w-0 p-5 sm:p-6 space-y-5 hidden"></div>
 
           <!-- TAB 1: OVERVIEW & CASHFLOW -->
           <div id="tabContent-summary" class="flex-1 overflow-auto min-h-0 min-w-0 p-5 sm:p-6 space-y-6">
@@ -714,14 +722,14 @@
         <!-- Custom Base URL (if custom or openrouter) -->
         <div id="customBaseUrlWrapper" class="hidden">
           <label class="block font-semibold text-slate-700 dark:text-slate-200 mb-1">Base URL</label>
-          <input type="text" id="settingBaseUrl" placeholder="https://openrouter.ai/api/v1" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-slate-800 dark:text-slate-100">
+          <input type="url" name="llm-base-url" autocomplete="off" id="settingBaseUrl" placeholder="https://openrouter.ai/api/v1" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-slate-800 dark:text-slate-100">
         </div>
 
         <!-- API Key Input -->
         <div>
           <label class="block font-semibold text-slate-700 dark:text-slate-200 mb-1">API Key</label>
           <div class="relative">
-            <input type="password" id="settingApiKey" placeholder="sk-or-v1-..." class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 pr-10 text-slate-800 dark:text-slate-100 font-mono text-xs">
+            <input type="password" name="llm-api-key" autocomplete="new-password" id="settingApiKey" placeholder="sk-or-v1-..." class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 pr-10 text-slate-800 dark:text-slate-100 font-mono text-xs">
             <button type="button" onclick="togglePasswordVisibility()" class="absolute right-3 top-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200" title="Toggle visibility">
               <i data-lucide="eye" id="eyeIcon" class="w-4 h-4"></i>
             </button>

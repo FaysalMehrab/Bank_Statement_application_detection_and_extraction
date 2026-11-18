@@ -6,7 +6,7 @@
 // Configure PDF.js worker
 if (window.pdfjsLib) {
   pdfjsLib.GlobalWorkerOptions.workerSrc =
-    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    "/vendor/pdf.worker.min.js";
 }
 
 // Global Application State
@@ -15,6 +15,7 @@ let documentsStore = [];
 let currentViewingDoc = null;
 let currentPdf = null;
 let pdfZoom = 1.0;
+let previewToken = 0;
 let previewObjectUrl = null;
 let activeEventSources = {};
 let selectedAccountFilter = "all";
@@ -23,10 +24,30 @@ const DB_NAME = "universal-underwriter";
 const DB_STORE = "source-files";
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
+const DOC_TYPE_META = {
+  bank_statement: { label: "Bank Statement", icon: "landmark", color: "blue" },
+  application_form: { label: "Funding Application", icon: "file-check", color: "purple" },
+  voided_check: { label: "Voided Check", icon: "credit-card", color: "emerald" },
+  driving_licence: { label: "Driver Licence / ID", icon: "id-card", color: "amber" },
+  other_document: { label: "Other Document", icon: "file-question", color: "slate" },
+};
+
+function docTypeOf(doc) {
+  return doc.result?.documentType || doc.category || doc.documentType || null;
+}
+
+// A document is a "statement" only once we know it is one; unknown (pending) is treated as statement-less.
+function isBankDoc(doc) {
+  return docTypeOf(doc) === "bank_statement";
+}
+
 // Initialize on DOM load
 document.addEventListener("DOMContentLoaded", async () => {
   initializeTheme();
   if (window.lucide) lucide.createIcons();
+  // Never let the browser autofill saved settings into the search box
+  const searchBox = document.getElementById("searchInput");
+  if (searchBox) searchBox.value = "";
   
   await loadProviders();
   loadStoredSettings();
@@ -414,6 +435,10 @@ async function loadStoredDocuments() {
     const raw = localStorage.getItem("underwriter_docs");
     if (raw) {
       documentsStore = JSON.parse(raw);
+      // Non-statement documents have no reconciliation: show them as "extracted", not "reconciled"
+      documentsStore.forEach((d) => {
+        if (d.status === "reconciled" && d.result && docTypeOf(d) && !isBankDoc(d)) d.status = "extracted";
+      });
       await Promise.all(
         documentsStore.map(async (doc) => {
           doc.fileObject = await getSourceFile(doc.id);
@@ -645,7 +670,7 @@ function renderDocumentTree() {
     if (!matchesSearch) return false;
 
     // Filter by status
-    if (filter === "reconciled" && doc.status !== "reconciled") return false;
+    if (filter === "reconciled" && doc.status !== "reconciled" && doc.status !== "extracted") return false;
     if (filter === "warning" && doc.status !== "warning") return false;
     if (filter === "pending" && doc.status !== "pending") return false;
 
@@ -803,6 +828,12 @@ function buildDocRowHTML(doc) {
   let badgeHTML = "";
   if (doc.status === "pending") {
     badgeHTML = `<span class="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-xs px-2.5 py-1 rounded-full font-medium inline-flex items-center space-x-1"><i data-lucide="clock" class="w-3 h-3"></i><span>Not Extracted</span></span>`;
+  } else if (doc.status === "extracted") {
+    badgeHTML = `
+      <span class="bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800 text-xs px-2.5 py-1 rounded-full font-semibold flex items-center space-x-1.5 shadow-sm">
+        <i data-lucide="check-circle" class="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400"></i>
+        <span>Data Extracted</span>
+      </span>`;
   } else if (doc.status === "reconciled") {
     badgeHTML = `
       <span class="bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800 text-xs px-2.5 py-1 rounded-full font-semibold flex items-center space-x-1.5 shadow-sm">
@@ -852,7 +883,14 @@ function buildDocRowHTML(doc) {
   // - If warnings exist -> Extract button becomes "Extract Again"
   // - If no warnings -> Says "Transaction Extracted"
   let actionButtonsHTML = "";
-  if (doc.status === "reconciled") {
+  if (doc.status === "extracted") {
+    actionButtonsHTML = `
+      <button onclick="viewExtractedData('${doc.id}')" class="px-3.5 py-1.5 text-xs bg-brand-50 hover:bg-brand-100 dark:bg-brand-950/80 dark:hover:bg-brand-900 text-brand-700 dark:text-brand-300 font-semibold rounded-lg transition border border-brand-200/80 dark:border-brand-800 flex items-center space-x-1.5 shadow-sm active:scale-95">
+        <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+        <span>View Details</span>
+      </button>
+    `;
+  } else if (doc.status === "reconciled") {
     actionButtonsHTML = `
       <span class="text-xs text-emerald-600 dark:text-emerald-400 font-semibold flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/60">
         <i data-lucide="check-check" class="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400"></i>
@@ -891,7 +929,8 @@ function buildDocRowHTML(doc) {
   }
 
   const bankName = doc.result?.extractedData?.bankName;
-  const endingBal = doc.result?.extractedData?.endingBalance;
+  const endingBal = isBankDoc(doc) ? doc.result?.extractedData?.endingBalance : undefined;
+  const headline = !isBankDoc(doc) && doc.result?.extractedData ? entityHeadline(doc.result) : "";
   const isPdf = doc.name.toLowerCase().endsWith(".pdf");
 
   return `
@@ -901,12 +940,13 @@ function buildDocRowHTML(doc) {
       </div>
       <div class="truncate">
         <div class="flex flex-wrap items-center gap-1.5">
-          <h4 class="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">${doc.name}</h4>
+          <h4 class="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">${escapeHtml(doc.name)}</h4>
           ${bankName ? `<span class="hidden md:inline-flex px-2 py-0.2 rounded-md bg-slate-100 dark:bg-slate-800 text-[10px] font-semibold text-slate-600 dark:text-slate-300 uppercase">${bankName}</span>` : ""}
           ${typeBadges.join("")}
         </div>
         <div class="flex items-center space-x-2 text-[11px] text-slate-400 mt-1">
           <span>${(doc.size / 1024).toFixed(1)} KB</span>
+          ${headline ? `<span>·</span><span class="font-medium text-slate-600 dark:text-slate-300 truncate max-w-[260px]">${escapeHtml(headline)}</span>` : ""}
           ${endingBal !== undefined ? `<span>·</span><span class="font-mono font-medium text-slate-600 dark:text-slate-300">Ending: ${money(endingBal)}</span>` : ""}
         </div>
       </div>
@@ -1019,7 +1059,7 @@ async function triggerExtraction(docId) {
       doc.warningReason = r.message || "Document not recognized as actionable financial statement.";
       showToast("Document contains no actionable statement data", "warning");
     } else {
-      doc.status = r.status === "success" ? "reconciled" : r.status === "warning" ? "warning" : "failed";
+      doc.status = r.status === "success" ? (r.documentType === "bank_statement" ? "reconciled" : "extracted") : r.status === "warning" ? "warning" : "failed";
       doc.warningReason = r.warningReason;
       showToast(`Extraction complete for ${doc.name}`, "success");
     }
@@ -1204,6 +1244,14 @@ function viewExtractedData(docId) {
 
   const res = doc.result;
   const data = res.extractedData || {};
+
+  if (!isBankDoc(doc)) {
+    openEntityViewer(doc);
+    return;
+  }
+  setViewerMode("bank");
+  const subEl = document.getElementById("modalDocSubtitle");
+  if (subEl) subEl.textContent = "Dual-pane underwriting inspector";
 
   // Tab 1: KPIs
   document.getElementById("kpiBegBal").textContent = money(data.beginningBalance);
@@ -1479,6 +1527,7 @@ async function loadDocPreview(file) {
   const indicator = document.getElementById("previewPageIndicator");
   const controls = document.getElementById("pdfControls");
   
+  const token = ++previewToken;
   pages.innerHTML = "";
   currentPdf = null;
   if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
@@ -1501,13 +1550,20 @@ async function loadDocPreview(file) {
   if ((file.type && file.type.includes("pdf")) || (file.name || currentViewingDoc?.name || "").toLowerCase().endsWith(".pdf")) {
     imgEl.classList.add("hidden");
     try {
+      if (!window.pdfjsLib) throw new Error("PDF engine failed to load");
       const arrayBuffer = await file.arrayBuffer();
-      currentPdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const loaded = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      if (token !== previewToken) return; // user switched documents meanwhile
+      currentPdf = loaded;
       controls.classList.remove("hidden");
-      await renderAllPdfPages();
+      await renderAllPdfPages(token);
     } catch (e) {
-      console.warn("Could not render PDF preview:", e);
-      pages.innerHTML = '<div class="rounded-xl bg-rose-950/80 p-4 text-xs text-rose-300 border border-rose-800">The PDF preview could not be rendered. You can still download the original file.</div>';
+      console.warn("pdf.js preview failed, falling back to native viewer:", e);
+      if (token !== previewToken) return;
+      // Fallback: let the browser's own PDF viewer show the original
+      previewObjectUrl = URL.createObjectURL(new Blob([file], { type: "application/pdf" }));
+      pages.innerHTML = `<iframe src="${previewObjectUrl}" title="Source PDF" class="w-full h-full min-h-[60vh] rounded-lg bg-white"></iframe>`;
+      if (indicator) indicator.textContent = "Native PDF viewer";
     }
   } else {
     imgEl.classList.remove("hidden");
@@ -1517,13 +1573,14 @@ async function loadDocPreview(file) {
   }
 }
 
-async function renderAllPdfPages() {
+async function renderAllPdfPages(token = previewToken) {
   if (!currentPdf) return;
   const pages = document.getElementById("pdfPages");
   const indicator = document.getElementById("previewPageIndicator");
   pages.innerHTML = "";
   
   for (let number = 1; number <= currentPdf.numPages; number += 1) {
+    if (token !== previewToken || !currentPdf) return;
     const page = await currentPdf.getPage(number);
     // Fit page width to the pane, then apply the user's zoom factor
     const container = document.getElementById("pdfViewerContainer");
@@ -1573,7 +1630,7 @@ function scrollPdfPage(direction) {
 }
 
 function switchTab(tabId) {
-  ["summary", "audit", "txns", "mca"].forEach((t) => {
+  ["summary", "audit", "txns", "mca", "entity"].forEach((t) => {
     const content = document.getElementById(`tabContent-${t}`);
     const btn = document.getElementById(`tabBtn-${t}`);
     if (content) content.classList.add("hidden");
@@ -1598,6 +1655,208 @@ function closeViewerModal() {
     URL.revokeObjectURL(previewObjectUrl);
     previewObjectUrl = null;
   }
+}
+
+// ===========================================================================
+// 7b. NON-STATEMENT DOCUMENT VIEWER (Applications, IDs, Voided Checks)
+// ===========================================================================
+function entityHeadline(result) {
+  const d = result?.extractedData || {};
+  const type = result?.documentType;
+  if (type === "application_form") {
+    const biz = d.business_information?.legal_business_name;
+    const amt = d.funding_request?.requested_amount;
+    return [biz, amt ? `Requesting ${money(amt)}` : null].filter(Boolean).join(" · ");
+  }
+  return [d.entityName, d.identifierNumber ? `#${d.identifierNumber}` : null].filter(Boolean).join(" · ");
+}
+
+function setViewerMode(mode) {
+  const bankTabs = ["summary", "audit", "txns", "mca"];
+  bankTabs.forEach((t) => document.getElementById(`tabBtn-${t}`)?.classList.toggle("hidden", mode !== "bank"));
+  const entityBtn = document.getElementById("tabBtn-entity");
+  if (entityBtn) {
+    entityBtn.classList.toggle("hidden", mode === "bank");
+    entityBtn.classList.toggle("flex", mode !== "bank");
+  }
+  document.getElementById("exportCsvBtn")?.classList.toggle("hidden", mode !== "bank");
+}
+
+function fieldValue(v) {
+  return v === null || v === undefined || String(v).trim() === "" ? null : String(v);
+}
+
+function fieldRow(label, value, opts = {}) {
+  const v = fieldValue(value);
+  const shown = v === null ? `<span class="text-slate-400 italic">Not provided</span>` :
+    opts.mask ? `<span class="font-mono" data-secret="${escapeHtml(v)}" data-masked="1">${escapeHtml(maskTail(v))}</span>
+      <button type="button" class="ml-2 text-[10px] font-semibold text-brand-600 dark:text-brand-400 hover:underline" onclick="toggleSecret(this)">Reveal</button>` :
+    `<span class="${opts.mono ? "font-mono" : ""}">${escapeHtml(opts.format ? opts.format(v) : v)}</span>`;
+  const copy = v !== null && !opts.mask ? `<button type="button" title="Copy" class="ml-2 text-slate-300 hover:text-brand-600 opacity-0 group-hover/f:opacity-100 transition" onclick="copyText('${escapeHtml(v).replace(/'/g, "&#39;")}')"><i data-lucide="copy" class="w-3 h-3"></i></button>` : "";
+  return `<div class="group/f flex items-start justify-between gap-4 py-2 border-b border-slate-100 dark:border-slate-800 last:border-0">
+    <dt class="text-[11px] uppercase tracking-wider font-semibold text-slate-400 shrink-0 pt-0.5">${escapeHtml(label)}</dt>
+    <dd class="text-xs text-slate-800 dark:text-slate-100 text-right min-w-0 break-words flex items-center justify-end">${shown}${copy}</dd>
+  </div>`;
+}
+
+function entityCard(title, icon, color, rowsHtml, extra = "") {
+  return `<section class="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 overflow-hidden">
+    <header class="px-4 py-2.5 flex items-center gap-2 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800">
+      <i data-lucide="${icon}" class="w-4 h-4 text-${color}-500"></i>
+      <h4 class="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">${escapeHtml(title)}</h4>
+    </header>
+    <dl class="px-4 py-1">${rowsHtml}</dl>${extra}
+  </section>`;
+}
+
+function maskTail(v) {
+  const digits = String(v);
+  return digits.length <= 4 ? "••••" : `${"•".repeat(Math.min(digits.length - 4, 7))}${digits.slice(-4)}`;
+}
+
+function toggleSecret(btn) {
+  const span = btn.previousElementSibling;
+  const masked = span.dataset.masked === "1";
+  span.textContent = masked ? span.dataset.secret : maskTail(span.dataset.secret);
+  span.dataset.masked = masked ? "0" : "1";
+  btn.textContent = masked ? "Hide" : "Reveal";
+}
+
+function copyText(text) {
+  const done = () => showToast("Copied to clipboard", "success", 1500);
+  if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(done).catch(() => showToast("Copy failed", "warning"));
+  else showToast("Clipboard not available", "warning");
+}
+
+function dateStatus(value) {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  const days = Math.round((d - new Date()) / 86400000);
+  if (days < 0) return { text: `Expired ${-days} day${-days === 1 ? "" : "s"} ago`, cls: "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300" };
+  if (days <= 60) return { text: `Expires in ${days} days`, cls: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300" };
+  return { text: "Valid", cls: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300" };
+}
+
+function renderApplicationView(d) {
+  const biz = d.business_information || {};
+  const fund = d.funding_request || {};
+  const owners = (d.owners || []).filter((o) => o && (fieldValue(o.owner_name) || fieldValue(o.ssn)));
+  const issues = [];
+  if (!fieldValue(biz.legal_business_name)) issues.push("Legal business name is missing");
+  if (!fieldValue(biz.ein)) issues.push("Federal Tax ID (EIN) is missing");
+  if (!fieldValue(biz.phone)) issues.push("Business phone number is blank");
+  if (!owners.length) issues.push("No owner information found");
+  owners.forEach((o, i) => {
+    if (!fieldValue(o.ssn)) issues.push(`Owner ${i + 1}: SSN is missing`);
+    if (!fieldValue(o.dob)) issues.push(`Owner ${i + 1}: date of birth is missing`);
+  });
+  const pctTotal = owners.reduce((sum, o) => sum + (parseFloat(String(o.percent_of_ownership || "").replace(/[^0-9.]/g, "")) || 0), 0);
+  if (owners.length && pctTotal > 0 && pctTotal < 51) issues.push(`Listed ownership totals only ${pctTotal}%`);
+
+  const header = `
+    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      <div class="p-3.5 rounded-xl bg-purple-50/70 dark:bg-purple-950/30 border border-purple-200/70 dark:border-purple-800">
+        <span class="text-[11px] uppercase tracking-wider font-medium text-purple-700 dark:text-purple-300">Requested Amount</span>
+        <p class="text-lg font-extrabold font-mono text-purple-900 dark:text-purple-100 mt-0.5">${fund.requested_amount ? money(fund.requested_amount) : "N/A"}</p>
+      </div>
+      <div class="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+        <span class="text-[11px] uppercase tracking-wider font-medium text-slate-500">Monthly Sales</span>
+        <p class="text-lg font-extrabold font-mono text-slate-800 dark:text-white mt-0.5">${biz.monthly_sales ? money(biz.monthly_sales) : "N/A"}</p>
+      </div>
+      <div class="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 col-span-2 sm:col-span-1">
+        <span class="text-[11px] uppercase tracking-wider font-medium text-slate-500">Use of Funds</span>
+        <p class="text-sm font-bold text-slate-800 dark:text-white mt-1 break-words">${escapeHtml(fieldValue(fund.use_of_funds) || "N/A")}</p>
+      </div>
+    </div>`;
+
+  const check = issues.length
+    ? `<div class="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200">
+        <p class="font-bold flex items-center gap-1.5"><i data-lucide="alert-triangle" class="w-4 h-4"></i>Application completeness: ${issues.length} item${issues.length === 1 ? "" : "s"} to review</p>
+        <ul class="mt-1.5 list-disc pl-5 space-y-0.5">${issues.map((i) => `<li>${escapeHtml(i)}</li>`).join("")}</ul></div>`
+    : `<div class="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-900 dark:text-emerald-200 font-semibold flex items-center gap-1.5">
+        <i data-lucide="check-circle-2" class="w-4 h-4"></i>Application looks complete: business, funding and owner fields are all present.</div>`;
+
+  const addr = [biz.address, [biz.city, biz.state].filter(Boolean).join(", "), biz.zip].filter(Boolean).join(" ");
+  const bizCard = entityCard("Business", "building-2", "purple", [
+    fieldRow("Legal name", biz.legal_business_name),
+    fieldRow("DBA", biz.dba),
+    fieldRow("Federal tax ID (EIN)", biz.ein, { mono: true }),
+    fieldRow("Address", addr),
+    fieldRow("Phone", biz.phone, { mono: true }),
+  ].join(""));
+
+  const ownerCards = owners.map((o, i) => entityCard(`Owner ${i + 1}${o.owner_name ? ` · ${o.owner_name}` : ""}`, "user", "indigo", [
+    fieldRow("Title", o.title),
+    fieldRow("Ownership", o.percent_of_ownership),
+    fieldRow("SSN", o.ssn, { mask: true }),
+    fieldRow("Date of birth", o.dob),
+    fieldRow("Phone", o.phone, { mono: true }),
+    fieldRow("Home address", o.address),
+  ].join(""))).join("");
+
+  return header + check + `<div class="grid grid-cols-1 xl:grid-cols-2 gap-4">${bizCard}${ownerCards}</div>`;
+}
+
+function renderIdentityView(d, type) {
+  const meta = DOC_TYPE_META[type] || DOC_TYPE_META.other_document;
+  const expiry = fieldValue(d.expirationDate) ? dateStatus(d.expirationDate) : null;
+  const banner = `
+    <div class="p-4 rounded-xl border border-${meta.color}-200 dark:border-${meta.color}-800 bg-${meta.color}-50/60 dark:bg-${meta.color}-950/30 flex items-start gap-3">
+      <i data-lucide="${meta.icon}" class="w-6 h-6 text-${meta.color}-600 shrink-0"></i>
+      <div class="min-w-0">
+        <p class="text-[11px] uppercase tracking-wider font-semibold text-${meta.color}-700 dark:text-${meta.color}-300">${escapeHtml(d.documentType || meta.label)}</p>
+        <p class="text-base font-extrabold text-slate-900 dark:text-white break-words">${escapeHtml(fieldValue(d.entityName) || "Name not detected")}</p>
+        ${expiry ? `<span class="inline-block mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${expiry.cls}">${expiry.text}</span>` : ""}
+      </div>
+    </div>`;
+
+  const isCheck = type === "voided_check";
+  const core = entityCard(isCheck ? "Account Details" : "Identity Details", isCheck ? "landmark" : "id-card", meta.color, [
+    fieldRow(isCheck ? "Account / check #" : "ID / licence #", d.identifierNumber, { mono: true, mask: !isCheck }),
+    isCheck ? fieldRow("Routing number", d.routingNumber, { mono: true }) : "",
+    fieldRow("Address", d.entityAddress),
+    fieldRow(isCheck ? "Check date" : "Issue date", d.issueOrEffectiveDate),
+    isCheck ? "" : fieldRow("Expiration date", d.expirationDate),
+  ].join(""));
+
+  const fields = Object.entries(d.extractedFields || {}).filter(([, v]) => fieldValue(v));
+  const extra = fields.length ? entityCard("Other Detected Fields", "list", "slate", fields.map(([k, v]) => fieldRow(k, v)).join("")) : "";
+  const summary = fieldValue(d.summary)
+    ? `<section class="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 text-xs leading-relaxed text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words"><h4 class="text-[11px] uppercase tracking-wider font-bold text-slate-400 mb-1.5">Summary</h4>${escapeHtml(d.summary)}</section>`
+    : "";
+  return banner + `<div class="grid grid-cols-1 xl:grid-cols-2 gap-4">${core}${extra}</div>` + summary;
+}
+
+function openEntityViewer(doc) {
+  const res = doc.result;
+  const type = res.documentType;
+  const meta = DOC_TYPE_META[type] || DOC_TYPE_META.other_document;
+  const data = res.extractedData || {};
+
+  setViewerMode("entity");
+  const label = document.getElementById("entityTabLabel");
+  if (label) label.textContent = type === "application_form" ? "Application Details" : `${meta.label} Details`;
+
+  const badgeEl = document.getElementById("modalDocBadge");
+  if (badgeEl) {
+    badgeEl.className = `px-2.5 py-0.5 rounded-full text-xs font-bold bg-${meta.color}-100 text-${meta.color}-800 dark:bg-${meta.color}-950 dark:text-${meta.color}-300`;
+    badgeEl.textContent = meta.label;
+  }
+  const sub = document.getElementById("modalDocSubtitle");
+  if (sub) sub.textContent = entityHeadline(res) || "Extracted document details";
+
+  const body = document.getElementById("tabContent-entity");
+  try {
+    body.innerHTML = type === "application_form" ? renderApplicationView(data) : renderIdentityView(data, type);
+  } catch (e) {
+    console.error("Entity render error:", e);
+    body.innerHTML = `<pre class="text-xs whitespace-pre-wrap">${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
+  }
+
+  switchTab("entity");
+  document.getElementById("dataViewerModal").classList.remove("hidden");
+  loadDocPreview(doc.fileObject);
+  if (window.lucide) lucide.createIcons();
 }
 
 // ===========================================================================
